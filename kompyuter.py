@@ -486,3 +486,24 @@ def uyqu_rejimi():
     if WINDOWS:
         subprocess.run("rundll32.exe powrprof.dll,SetSuspendState 0,1,0", shell=True,
                        creationflags=KONSOLSIZ)
+
+
+# ---------- VEB-KAMERA (egasi kompyuterini himoya qilishi uchun) ----------
+def kamera_rasm(yol):
+    """Kompyuterning veb-kamerasidan bitta surat oladi va faylga saqlaydi.
+    Egasi kompyuterida kim borligini bilishi uchun (o'g'irlik/ruxsatsiz kirishga qarshi).
+    Natija: yo'l (muvaffaqiyat), None (kamera ochilmadi) yoki 'kutubxona' (opencv yo'q)."""
+    try:
+        import cv2
+    except ImportError:
+        return "kutubxona"
+    kamera = cv2.VideoCapture(0, getattr(cv2, "CAP_DSHOW", 0))
+    ok, kadr = False, None
+    for _ in range(6):                       # dastlabki kadrlar qorong'i — kamera yorug'ga moslashsin
+        ok, kadr = kamera.read()
+        time.sleep(0.08)
+    kamera.release()
+    if ok and kadr is not None:
+        cv2.imwrite(yol, kadr)
+        return yol
+    return None

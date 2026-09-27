@@ -686,6 +686,28 @@ def oynani_yop():
         gapir("Bekor qilindi.")
 
 
+def kamera_rasmi():
+    """Veb-kameradan surat olib, egasiga (Telegram yoki ish stoli) beradi.
+    Egasi kompyuterida kim borligini ko'rishi uchun."""
+    gapir("Kameradan surat olyapman.")
+    yol = os.path.join(tempfile.gettempdir(), "jarvis_kamera.jpg")
+    natija = kompyuter.kamera_rasm(yol)
+    if natija == "kutubxona":
+        gapir("Buning uchun opencv-python kutubxonasini o'rnating.")
+        return
+    if not natija:
+        gapir("Kameradan surat ololmadim. Kamera boshqa dasturda ochiq bo'lishi mumkin.")
+        return
+    if javob_telegramga and bot:
+        fonda(bot.fayl_yubor, yol, "Kamera surati")
+        gapir("Kamera suratini yubordim.")
+    else:
+        manzil = os.path.join(kompyuter.desktop_yoli(),
+                              datetime.datetime.now().strftime("Kamera %Y-%m-%d %H-%M-%S.jpg"))
+        shutil.copy(yol, manzil)
+        gapir("Kamera surati ish stoliga saqlandi.")
+
+
 def ekran_rasmi():
     yol = os.path.join(tempfile.gettempdir(), "jarvis_ekran.png")
     try:
@@ -1427,6 +1449,10 @@ def bajar(b):
             kompyuter.kompyuterni_ochir()
         else:
             gapir("Bekor qilindi.")
+
+    elif bor(b, "kamera", "камера", "webcam", "kimdir bor", "kim bor", "kim otiribdi",
+             "selfie", "selfi") and not bor(b, "och"):
+        kamera_rasmi()
 
     elif bor(b, "jonli", "efir", "kuzat", "live") and bor(b, "ekran", "screen", "экран"):
         ekranni_kuzat()
