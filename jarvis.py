@@ -38,6 +38,7 @@ import kompyuter
 import sozlamalar
 import suhbat
 import sun_iy
+import telefon
 import telegram_bot
 from tarjima import tarjima
 
@@ -731,6 +732,96 @@ def oynani_yop():
         gapir("Bekor qilindi.")
 
 
+# ---------- TELEFON (ADB orqali) ----------
+def telefon_holati_ayt(holat):
+    xabarlar = {
+        "yoq_adb": "Telefon boshqaruvi uchun ADB dasturi kerak. Uni o'rnatishni tushuntiraman.",
+        "yoq_telefon": "Telefon topilmadi. Kabel bilan ulang va telefonda USB debugging yoqing.",
+        "ruxsat": "Telefon ekranida 'USB debugging'ga ruxsat bering, keyin qayta urinib ko'ring."}
+    gapir(xabarlar.get(holat, "Telefon bilan bog'lana olmadim."))
+
+
+def telefon_amal(b):
+    """Telefon buyrug'ini bajaradi. Bajarilsa True qaytaradi."""
+    ulangan, holat = telefon.ulanganmi()
+    if not ulangan:
+        telefon_holati_ayt(holat)
+        return True
+
+    if bor(b, "ulan") and bor(b, "wifi", "wi-fi", "vayfay", "simsiz"):
+        gapir("Wi-Fi ulanishni sozlash uchun telefon IP manzili kerak. Buni tushuntiraman.")
+        return True
+
+    if bor(b, "ekran") and bor(b, "rasm", "surat", "skrin", "screenshot", "ol", "yubor", "ko'rsat"):
+        gapir("Telefon ekranini olyapman.")
+        yol = os.path.join(tempfile.gettempdir(), "jarvis_telefon_ekran.png")
+        if not telefon.ekran_rasm(yol):
+            gapir("Telefon ekranini ololmadim.")
+            return True
+        if javob_telegramga and bot:
+            fonda(bot.fayl_yubor, yol, "Telefon ekrani")
+            gapir("Telefon ekranini yubordim.")
+        else:
+            manzil = os.path.join(kompyuter.desktop_yoli(),
+                                  datetime.datetime.now().strftime("Telefon ekrani %H-%M-%S.png"))
+            shutil.copy(yol, manzil)
+            gapir("Telefon ekrani ish stoliga saqlandi.")
+        return True
+
+    if bor(b, "rasm", "surat", "foto", "video", "galere") and bor(
+            b, "ko'chir", "kochir", "olib kel", "kompyuter", "yuklab", "tashla", "yubor"):
+        gapir("Telefondagi rasm va videolarni kompyuterga ko'chiryapman. Bu biroz vaqt oladi.")
+        fonda(_telefon_rasmlarini_kochir)
+        return True
+
+    if bor(b, "uy", "home", "bosh ekran", "asosiy ekran"):
+        telefon.tugma("KEYCODE_HOME")
+        gapir("Bosh ekranga qaytdim.")
+        return True
+    if bor(b, "orqaga", "back", "ortga") and not bor(b, "ilova"):
+        telefon.tugma("KEYCODE_BACK")
+        gapir("Orqaga qaytdim.")
+        return True
+
+    # ilova ochish: "telefonda instagramni och"
+    if bor(b, "och", "kir", "ishga", "yoq"):
+        nom = telefon_ilova_nomi(b)
+        paket = telefon.ilova_paketi(nom) if nom else None
+        if paket:
+            if telefon.ilova_och(paket):
+                gapir(f"Telefonda {nom} ochildi.")
+            else:
+                gapir(f"Telefonda {nom} ochilmadi.")
+            return True
+        gapir("Telefonda qaysi ilovani ochay? Masalan: telefonda instagramni och.")
+        return True
+
+    return False                                 # telefon buyrug'i emas — boshqa ishlov beriladi
+
+
+def telefon_ilova_nomi(gap):
+    ortiqcha = ("telefon", "телефон", "smartfon", "och", "kir", "ishga", "tushir", "dagi",
+                "dan", "da", "ilova", "dastur", "menga", "ber")
+    sozlar = []
+    for s in gap.split():
+        if s.startswith(ortiqcha):
+            continue
+        if len(s) > 4 and s.endswith(("ni", "ga", "di")):
+            s = s[:-2]
+        sozlar.append(s)
+    return " ".join(sozlar).strip()
+
+
+def _telefon_rasmlarini_kochir():
+    manzil = os.path.join(kompyuter.desktop_yoli(),
+                          datetime.datetime.now().strftime("Telefon rasmlari %Y-%m-%d"))
+    muvaffaqiyat, chiqish = telefon.fayllarni_olib_kel("/sdcard/DCIM/Camera", manzil)
+    if muvaffaqiyat:
+        gapir(f"Telefon rasmlari ko'chirildi. Papka nomi: {os.path.basename(manzil)}.")
+    else:
+        gapir("Rasmlarni ko'chira olmadim. Telefonda ruxsatlarni tekshiring.")
+
+
 def kamera_rasmi():
     """Veb-kameradan surat olib, egasiga (Telegram yoki ish stoli) beradi.
     Egasi kompyuterida kim borligini ko'rishi uchun."""
@@ -1320,6 +1411,11 @@ def bajar(b):
     if bor(b, "xayr"):
         gapir(f"Xayr, {ISM}!")
         return False
+
+    # Telefon buyruqlari eng birinchi tekshiriladi ("ko'chir"da "o'chir" bor kabi
+    # chalkashliklar bo'lmasligi uchun)
+    elif bor(b, "telefon", "телефон", "smartfon") and telefon_amal(b):
+        pass
 
     elif bor(b, "musiq", "qo'shiq", "video", "pauza") and bor(b, "to'xtat", "pauza", "davom"):
         pyautogui.press("playpause")                # klaviaturadagi ⏯ tugmasi
