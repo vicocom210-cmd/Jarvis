@@ -10,6 +10,7 @@ import difflib
 import os
 import re
 import shutil
+import sys
 import stat
 import string
 import subprocess
@@ -507,3 +508,36 @@ def kamera_rasm(yol):
         cv2.imwrite(yol, kadr)
         return yol
     return None
+
+
+# ---------- Windows bilan birga ishga tushish ----------
+def _avtostart_fayli():
+    papka = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows",
+                         "Start Menu", "Programs", "Startup")
+    return os.path.join(papka, "Jarvis.bat")
+
+
+def avtostart(yoqilsin=True):
+    """Kompyuter yonganda Jarvis o'zi ishga tushsin (Startup papkasiga yorliq)."""
+    if not WINDOWS:
+        return False
+    fayl = _avtostart_fayli()
+    try:
+        if not yoqilsin:
+            if os.path.exists(fayl):
+                os.remove(fayl)
+            return True
+        if getattr(sys, "frozen", False):              # Jarvis.exe
+            buyruq = f'start "" "{sys.executable}"'
+        else:                                          # python jarvis.py
+            papka = os.path.dirname(os.path.abspath(__file__))
+            pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+            dastur = pythonw if os.path.exists(pythonw) else sys.executable
+            buyruq = f'cd /d "{papka}"\nstart "" "{dastur}" "{os.path.join(papka, "jarvis.py")}"'
+        os.makedirs(os.path.dirname(fayl), exist_ok=True)
+        with open(fayl, "w", encoding="utf-8") as f:
+            f.write("@echo off\n" + buyruq + "\n")
+        return True
+    except OSError as xato:
+        print(f"(Avtostart xatosi: {xato})")
+        return False

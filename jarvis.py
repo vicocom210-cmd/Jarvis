@@ -9,6 +9,17 @@ Tuzilishi (3 ta thread):
   mikrofon       — doim tinglaydi, eshitganini kirish_navbat'ga qo'yadi
   miya           — kirish_navbat'dan gap olib, buyruqni bajaradi (bajar)
 """
+import os
+import sys
+
+# EXE (oynali rejim)da konsol yo'q — barcha xabar va xatolar log faylga yoziladi:
+# %APPDATA%\Jarvis\jarvis.log
+if getattr(sys, "frozen", False) and sys.stdout is None:
+    _log_papka = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Jarvis")
+    os.makedirs(_log_papka, exist_ok=True)
+    sys.stdout = sys.stderr = open(os.path.join(_log_papka, "jarvis.log"), "a",
+                                   encoding="utf-8", buffering=1)
+
 import asyncio
 import audioop
 import datetime
@@ -51,7 +62,10 @@ SOZ = sozlamalar.yukla()
 ISM = SOZ["ism"]                 # Jarvis sizni shunday chaqiradi
 SUHBAT_VAQTI = 8                 # buyruqdan keyin shuncha soniya "Jarvis" demasdan gapirsa bo'ladi
 
-pygame.mixer.init()
+try:
+    pygame.mixer.init()
+except pygame.error as _xato:            # karnay/ovoz qurilmasi yo'q — dastur baribir ishlasin
+    print(f"(Ovoz qurilmasi topilmadi: {_xato})")
 tanib = sr.Recognizer()
 AUDIO_FAYL = os.path.join(tempfile.gettempdir(), "jarvis_javob.mp3")
 
@@ -1714,6 +1728,14 @@ def bajar(b):
         chat_och()
         gapir("Chat oynasini ochdim. Barcha suhbatlarimiz arxivda saqlangan.")
 
+    elif bor(b, "avtomatik", "avto ishga", "windows bilan", "автозапуск", "o'zi ishga tush", "ozi ishga tush"):
+        yoqilsin = not bor(b, "o'chir", "ochir", "bekor", "kerak emas")
+        if kompyuter.avtostart(yoqilsin):
+            gapir("Endi kompyuter yonganda men ham o'zim ishga tushaman." if yoqilsin
+                  else "Avtomatik ishga tushish o'chirildi.")
+        else:
+            gapir("Buni sozlay olmadim.")
+
     # ----- kundalik qulayliklar -----
     elif bor(b, "shahrim", "men yashaydigan shahar") and qulayliklar.shahar_top(b, "")[0]:
         shahar, nomi = qulayliklar.shahar_top(b, "")
@@ -2100,6 +2122,18 @@ def miya():
 
 if __name__ == "__main__":
     import interfeys
+    if "--tekshir" in sys.argv:          # EXE to'g'ri yig'ilganini tekshirish (GitHub'da)
+        import speech_recognition
+        import pyaudio                   # noqa: F401  — mikrofon
+        flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
+        for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio"):
+            try:
+                __import__(ixtiyoriy)
+                print(f"  + {ixtiyoriy}")
+            except Exception as xato:
+                print(f"  - {ixtiyoriy}: {xato}")
+        print(f"Jarvis tayyor. Barcha modullar yuklandi. FLAC: {flac}")
+        sys.exit(0)
     oyna = interfeys.Oyna(ui_navbat, kirish_navbat, SOZ)     # oyna — asosiy thread'da
     threading.Thread(target=mikrofon_ishi, daemon=True).start()
     threading.Thread(target=miya, daemon=True).start()

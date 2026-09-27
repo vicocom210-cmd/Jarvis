@@ -1,0 +1,65 @@
+name: Jarvis Windows EXE
+
+# Jarvis.exe'ni GitHub o'zi yasaydi (Python o'rnatish shart emas).
+# Ishga tushirish: Actions > "Jarvis Windows EXE" > Run workflow.
+# Yoki kompyuter kodi (*.py, chat.html) o'zgarsa, avtomatik ishlaydi.
+on:
+  push:
+    paths:
+      - "*.py"
+      - "chat.html"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+jobs:
+  qurish:
+    runs-on: windows-latest
+    steps:
+      - name: Kodni olish
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 o'rnatish
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+
+      - name: Kutubxonalarni o'rnatish
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pillow SpeechRecognition pyaudio edge-tts pygame pyautogui pyperclip paho-mqtt opencv-python uiautomation
+
+      - name: Shazam (musiqani aniqlash) — ixtiyoriy
+        continue-on-error: true
+        run: pip install shazamio
+
+      - name: Belgi (ikonka) yasash
+        run: python belgi_yasa.py
+
+      - name: Jarvis.exe yig'ish
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name Jarvis --icon jarvis.ico
+          --add-data "chat.html;."
+          --collect-data speech_recognition
+          --collect-all uiautomation
+          --collect-submodules shazamio
+          --hidden-import pyaudio
+          jarvis.py
+
+      - name: EXE'ni sinash (hamma modul yuklanadimi?)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\Jarvis.exe" -ArgumentList "--tekshir" -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); throw "EXE javob bermadi" }
+          $log = Join-Path $env:APPDATA "Jarvis\jarvis.log"
+          if (Test-Path $log) { Get-Content $log }
+          if ($p.ExitCode -ne 0) { throw "EXE xato bilan tugadi: $($p.ExitCode)" }
+          $hajm = [math]::Round((Get-Item dist\Jarvis.exe).Length / 1MB, 1)
+          Write-Host "Jarvis.exe hajmi: $hajm MB"
+
+      - name: EXE'ni yuklab olish uchun saqlash
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-EXE
+          path: dist/Jarvis.exe
+          retention-days: 30
