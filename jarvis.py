@@ -1778,11 +1778,13 @@ def miya():
         if not davom:
             break
 
+        # Buyruq bajarildi — darhol kutishga qaytamiz (yana faqat "Jarvis" desangiz eshitadi,
+        # boshqa ovozlarga / TV / suhbatga javob bermaydi). Oyna ekrandan yo'qoladi.
+        suhbat_tugashi = 0
         if media_boshlandi:
-            suhbat_tugashi = 0                          # musiqa ketyapti — darhol kutish rejimi
             print("💤 Musiqa qo'yildi, faqat Jarvis desangiz eshitaman.")
         else:
-            suhbat_tugashi = time.time() + SUHBAT_VAQTI
+            print("💤 Kutish rejimi (faqat Jarvis desangiz).")
     ui_navbat.put(("yopil",))
 
 

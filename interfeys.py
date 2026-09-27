@@ -809,19 +809,20 @@ class Oyna:
 
     # ----- holat va animatsiya -----
     def holatni_yangila(self, dt):
-        yashirin = time.time() < self.yashirin_gacha
+        # Kutish rejimida oyna umuman ko'rinmaydi (burchakda ham turmaydi).
+        # Faqat "Jarvis" deganda (holat != kutish) yoki sozlama ochilganda ko'rinadi,
+        # keyin buyruq bajarilib kutishga qaytgach — yana ekrandan yo'qoladi.
+        kerak_korinsin = (self.sozlama_ochiq or self.soz_t > 0.01 or self.holat != "kutish")
+        yashirin = (time.time() < self.yashirin_gacha) or (not kerak_korinsin)
         if yashirin != self.yashirin:
             self.yashirin = yashirin
             oyna_korinishi(not yashirin)
 
-        # Sozlamalar ochiq — butun ekran; faol bo'lsa — markazda katta;
-        # 1.5 soniya kutish rejimida tursa — burchakka qaytadi
+        # Sozlamalar ochiq — butun ekran; faol bo'lsa — markazda katta.
         if self.sozlama_ochiq or self.soz_t > 0.01:
             self.rejimga_ot("sozlama")
         elif self.holat != "kutish":
             self.rejimga_ot("katta")
-        elif time.time() - self.kutish_boshlandi > 1.5:
-            self.rejimga_ot("kichik")
 
         if self.rejim == "sozlama":
             oldingi = self.soz_t
