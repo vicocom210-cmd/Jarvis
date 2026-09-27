@@ -93,6 +93,41 @@ class Bot:
             print(f"(Telegram: fayl yuborilmadi: {xato})")
             return False
 
+    def rasm_yubor(self, yol, izoh=""):
+        """Rasmni surat sifatida yuboradi (hujjat emas). Xabar raqamini qaytaradi yoki None."""
+        if not self.egasi:
+            return None
+        try:
+            with open(yol, "rb") as f:
+                malumot = f.read()
+            tana, tur = _multipart({"chat_id": self.egasi, "caption": izoh[:1000]}, "photo",
+                                   os.path.basename(yol), malumot)
+            sorov = urllib.request.Request(API.format(token=self.token, usul="sendPhoto"),
+                                           data=tana, headers={"Content-Type": tur})
+            with urllib.request.urlopen(sorov, timeout=60) as javob:
+                natija = json.loads(javob.read().decode("utf-8"))
+            return natija["result"]["message_id"] if natija.get("ok") else None
+        except Exception as xato:
+            print(f"(Telegram: rasm yuborilmadi: {xato})")
+            return None
+
+    def rasm_yangila(self, message_id, yol):
+        """Avval yuborilgan suratni yangi rasm bilan almashtiradi (jonli ekran uchun)."""
+        if not self.egasi:
+            return False
+        try:
+            with open(yol, "rb") as f:
+                malumot = f.read()
+            media = json.dumps({"type": "photo", "media": "attach://rasm"})
+            tana, tur = _multipart({"chat_id": self.egasi, "message_id": message_id, "media": media},
+                                   "rasm", os.path.basename(yol), malumot)
+            sorov = urllib.request.Request(API.format(token=self.token, usul="editMessageMedia"),
+                                           data=tana, headers={"Content-Type": tur})
+            with urllib.request.urlopen(sorov, timeout=60) as javob:
+                return json.loads(javob.read().decode("utf-8")).get("ok", False)
+        except Exception:
+            return False                        # tez-tez yangilashda ba'zan xato bo'ladi — jim o'tamiz
+
     def yuklab_ol(self, file_id, nom):
         """Telefondan kelgan faylni kompyuterga saqlaydi. Saqlangan yo'lni qaytaradi."""
         malumot = self.sorov("getFile", file_id=file_id)

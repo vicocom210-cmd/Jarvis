@@ -173,6 +173,22 @@ def tugmani_bos(nom):
     return None
 
 
+def kalitlardan_bos(kalitlar, rasm_yoli=None):
+    """Ekrandagi yozuvlar ichidan berilgan kalit so'zlardan birini topib bosadi.
+    Bir marta ekran o'qiladi (tez). Bosilsa True."""
+    import pyautogui
+    if rasm_yoli is None:
+        rasm_yoli = os.path.join(tempfile.gettempdir(), "jarvis_ocr.png")
+        pyautogui.screenshot(rasm_yoli)
+    sozlar = ekran_sozlari(rasm_yoli)
+    for kalit in kalitlar:
+        joy = yozuvni_top(kalit, sozlar)
+        if joy:
+            pyautogui.click(*joy)
+            return True
+    return False
+
+
 def faol_oyna_nomi():
     """Hozir oldinda turgan oynaning sarlavhasi."""
     if os.name != "nt":

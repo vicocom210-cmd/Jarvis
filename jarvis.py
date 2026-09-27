@@ -456,7 +456,9 @@ def telegram_xabar_qismlari(gap):
     """'telegramdan "my bro" ga salom deb yoz' -> ('my bro', 'salom')
     'telegramda alisherga ertaga boraman deb yoz' -> ('alisher', 'ertaga boraman')"""
     sozlar = gap.split()
-    boshi = next((i for i, s in enumerate(sozlar) if s.startswith(("telegram", "телеграм"))), -1)
+    ilova_prefikslari = ("telegram", "телеграм", "instagram", "инстаграм", "insta", "whatsapp",
+                         "vatsap", "votsap", "ватсап", "messenger", "мессенджер", "vkontakte", "вк")
+    boshi = next((i for i, s in enumerate(sozlar) if s.startswith(ilova_prefikslari)), -1)
     oxiri = len(sozlar) - 1 - sozlar[::-1].index("deb")
     orta = " ".join(sozlar[boshi + 1:oxiri]).strip()
     qoshtirnoq = re.match(r'["“«]([^"”»]+)["”»]\s*(?:ga|ni|ning)?\s*(.*)$', orta)
@@ -498,6 +500,110 @@ def telegramda_yoz(gap):
     gapir(f"{nom} ga yozildi: {xabar}")
     telegramga_ekran()                                   # telefonda natijani ko'rasiz
     ui_navbat.put(("korsat",))
+
+
+# Brauzerda ochiladigan ilovalar: nomi -> (xabarlar sahifasi, tanish so'zlari)
+WEB_ILOVALAR = {
+    "instagram": ("https://www.instagram.com/direct/inbox/", ("instagram", "инстаграм", "insta", "ig")),
+    "whatsapp": ("https://web.whatsapp.com/", ("whatsapp", "vatsap", "votsap", "ватсап")),
+    "messenger": ("https://www.facebook.com/messages/", ("messenger", "мессенджер")),
+    "vk": ("https://vk.com/im", ("vkontakte", "вконтакте", "вк")),
+}
+# Ilova ichida: qidiruv maydoni va xabar maydonini topish uchun kalit so'zlar
+QIDIRUV_KALITLARI = ("search", "qidir", "поиск", "искать", "search input")
+XABAR_KALITLARI = ("message", "xabar", "написать", "type a message", "сообщение", "yozing")
+
+
+def ilova_xabar_qismlari(gap):
+    """'instagramda alisher blog ga salom deb yoz' -> ('instagram', 'alisher blog', 'salom')"""
+    sozlar = gap.split()
+    ilova = None
+    for nom, (_, sozlari) in WEB_ILOVALAR.items():
+        if bor(gap, *sozlari):
+            ilova = nom
+            break
+    if bor(gap, "telegram", "телеграм"):
+        ilova = "telegram"
+    # kimga va xabar — telegram bilan bir xil ajratish
+    nom, xabar = telegram_xabar_qismlari(gap)
+    return ilova, nom, xabar
+
+
+def ilovada_yoz(gap):
+    """Har qanday ilova/saytda kontaktga xabar yozadi (Instagram, WhatsApp va h.k.).
+    Ochish, qidirish, kontaktni tanlash va yozish — ekrandagi yozuvlarni o'qib bajariladi."""
+    ilova, nom, xabar = ilova_xabar_qismlari(gap)
+    if ilova == "telegram":
+        telegramda_yoz(gap)
+        return
+    if not ilova or not nom or not xabar:
+        gapir("Qaysi ilovada, kimga va nima deb yozay? Masalan: "
+              "instagramda Alisherga salom deb yoz.")
+        return
+    if oxirgi_manba == "ovoz" and not tasdiqla(
+            f"{ilova} da {nom} ga {xabar} deb yozaymi?"):
+        gapir("Bekor qilindi.")
+        return
+    url = WEB_ILOVALAR[ilova][0]
+    gapir(f"{ilova} ochilmoqda. {nom} ni topib, xabar yozaman.")
+    fonda(_ilovada_yoz_fonda, ilova, url, nom, xabar)
+
+
+def _ilovada_yoz_fonda(ilova, url, nom, xabar):
+    jarvisni_yashir(45)                          # butun jarayon davomida yashirin turadi
+    webbrowser.open(url)
+    time.sleep(9)                                # sahifa yuklanishini kutamiz
+    # 1) qidiruvni ochamiz va kontakt nomini yozamiz
+    if not boshqaruv.kalitlardan_bos(QIDIRUV_KALITLARI):
+        pyautogui.hotkey("ctrl", "k")           # ba'zi saytlarda qidiruv shu tugma bilan ochiladi
+    time.sleep(1)
+    boshqaruv.matn_yoz(nom)
+    time.sleep(3)                               # natijalar chiqishini kutamiz
+    pyautogui.press("enter")                    # birinchi natijani ochamiz
+    time.sleep(3)
+    # 2) xabar maydonini topib, matnni yozamiz
+    boshqaruv.kalitlardan_bos(XABAR_KALITLARI)
+    time.sleep(0.5)
+    boshqaruv.matn_yoz(xabar)
+    time.sleep(0.4)
+    pyautogui.press("enter")
+    time.sleep(1)
+    gapir(f"{ilova} da {nom} ga yozdim: {xabar}")
+    telegramga_ekran()
+    ui_navbat.put(("korsat",))
+
+
+def ekranni_kuzat(soniya=120, oraliq=3):
+    """Ekranni Telegram'ga jonli uzatadi: bitta rasmni har bir necha soniyada yangilaydi.
+    'to'xta' desangiz to'xtaydi."""
+    if not bot or not bot.egasi:
+        gapir("Buning uchun avval Telegram botni ulang.")
+        return
+    gapir("Ekranni Telegram'ga jonli uzatyapman. To'xtatish uchun to'xta deng.")
+    fonda(_ekranni_kuzat_fonda, soniya, oraliq)
+
+
+def _ekranni_kuzat_fonda(soniya, oraliq):
+    yol = os.path.join(tempfile.gettempdir(), "jarvis_jonli.png")
+    try:
+        pyautogui.screenshot(yol)
+    except Exception:
+        gapir("Ekran rasmini ololmadim. pillow kutubxonasini o'rnating.")
+        return
+    xabar_id = bot.rasm_yubor(yol, "🔴 Jonli ekran")
+    if not xabar_id:
+        gapir("Jonli uzatishni boshlolmadim.")
+        return
+    uzildi.clear()
+    tugash = time.time() + soniya
+    while time.time() < tugash and not uzildi.is_set():
+        time.sleep(oraliq)
+        try:
+            pyautogui.screenshot(yol)
+            bot.rasm_yangila(xabar_id, yol)
+        except Exception:
+            break
+    bot.yoz("⏹ Jonli ekran to'xtadi.")
 
 
 def tugma_nomi(gap):
@@ -1117,7 +1223,7 @@ def bajar(b):
 
     elif len(b.split()) <= 3 and {"to'xta", "jim", "bas", "yetar", "yetadi", "stop", "стоп",
                                   "хватит"} & set(b.replace(",", " ").split()):
-        pass                                        # gapirishni to'xtatdi — boshqa ish yo'q
+        uzildi.set()                                # jonli ekran / uzoq ish bo'lsa to'xtaydi
 
     elif sozlama_buyrugi(b):
         pass
@@ -1255,12 +1361,43 @@ def bajar(b):
     elif bor(b, "ovoz") and bor(b, "o'chir"):
         pyautogui.press("volumemute")
 
-    elif bor(b, "kompyuter") and bor(b, "o'chir"):
-        if tasdiqla("Rostdan kompyuterni o'chiraymi?"):
-            gapir("10 soniyadan keyin o'chadi.")
-            subprocess.run("shutdown /s /t 10", shell=True)
+    elif bor(b, "o'chirishni bekor") or (bor(b, "bekor") and bor(b, "o'chir", "restart", "qayta")):
+        kompyuter.ochirishni_bekor()
+        gapir("O'chirish bekor qilindi.")
+
+    elif bor(b, "kompyuter", "komputer", "kompiyuter", "kampyuter", "kampiyuter", "noutbuk",
+             "sistema", "kampuyter") and bor(b, "qulf", "bloklab", "blokla", "lock", "заблок"):
+        gapir("Kompyuter qulflandi.")
+        kompyuter.kompyuterni_qulfla()
+
+    elif bor(b, "kompyuter", "komputer", "kompiyuter", "kampyuter", "kampiyuter", "noutbuk",
+             "sistema", "kampuyter") and bor(b, "uyqu", "uxla", "sleep", "спящ"):
+        if tasdiqla("Kompyuterni uyqu rejimiga o'tkazaymi?"):
+            kompyuter.uyqu_rejimi()
+
+    elif bor(b, "kompyuter", "komputer", "kompiyuter", "kampyuter", "kampiyuter", "noutbuk",
+             "sistema", "kampuyter") and bor(b, "restart", "qayta yukla", "qayta ishga",
+                                             "perezagruz", "перезагруз", "o'chirib yoq"):
+        if tasdiqla("Kompyuterni qayta yuklaymi? Saqlanmagan ishlar yo'qoladi."):
+            gapir("Kompyuter 10 soniyadan keyin qayta yuklanadi.")
+            kompyuter.kompyuterni_restart()
         else:
             gapir("Bekor qilindi.")
+
+    elif bor(b, "kompyuter", "komputer", "kompiyuter", "kampyuter", "kampiyuter", "noutbuk",
+             "sistema", "kampuyter") and bor(b, "o'chir", "vikl", "выключ"):
+        if tasdiqla("Rostdan kompyuterni o'chiraymi?"):
+            gapir("Kompyuter 15 soniyadan keyin o'chadi. Bekor qilish uchun o'chirishni bekor qil deng.")
+            kompyuter.kompyuterni_ochir()
+        else:
+            gapir("Bekor qilindi.")
+
+    elif bor(b, "jonli", "efir", "kuzat", "live") and bor(b, "ekran", "screen", "экран"):
+        ekranni_kuzat()
+
+    elif bor(b, "instagram", "инстаграм", "whatsapp", "vatsap", "messenger", "vkontakte") \
+            and "deb" in b.split() and b.split()[-1].startswith(("yoz", "yubor", "jo'nat")):
+        ilovada_yoz(b)
 
     elif any(s.startswith("och") for s in b.split()) or bor(b, "ishga tushir"):
         ilova_och(b)

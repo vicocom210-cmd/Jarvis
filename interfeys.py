@@ -501,9 +501,9 @@ class Oyna:
                                  "soz": nuqta_rasmlari(1.0), "soz_katta": nuqta_rasmlari(1.35)}
 
         f = "segoeui,arial"
-        self.shrift = pygame.font.SysFont(f, 16)
-        self.shrift_kichik = pygame.font.SysFont(f, 13)
-        self.shrift_yozuv = pygame.font.SysFont(f, 16)
+        self.shrift = pygame.font.SysFont(f, 18, bold=True)
+        self.shrift_kichik = pygame.font.SysFont(f, 14, bold=True)
+        self.shrift_yozuv = pygame.font.SysFont(f, 18)
         self._matn_xotira = {}
         self.yozuv_nur = 0.0
         self.yuborish_joyi = pygame.Rect(0, 0, 0, 0)
@@ -1018,14 +1018,14 @@ class Oyna:
             for qator in matnni_bol(self.shrift, self.siz_matni, maydon.w - 16, 2):
                 qatorlar.append((qator, (205, 214, 230)))
         if self.jarvis_matni:
-            qolgan = max(1, (maydon.h - len(qatorlar) * 20) // 20)
+            qolgan = max(1, (maydon.h - len(qatorlar) * 23) // 23)
             for qator in matnni_bol(self.shrift, self.jarvis_matni, maydon.w - 16, qolgan):
                 qatorlar.append((qator, yorqin))
         y = maydon.y + 4
         for qator, rang in qatorlar:
             yuza = self.soyali_matn(qator, self.shrift, rang)
             self.ekran.blit(yuza, (self.eni // 2 - yuza.get_width() // 2, y))
-            y += 20
+            y += 23
 
         self.yozish_joyi_chiz(sichqoncha, dt)
 

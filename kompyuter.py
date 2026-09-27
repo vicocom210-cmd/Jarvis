@@ -462,3 +462,27 @@ def papkani_zip(papka):
     asos = os.path.join(tempfile.gettempdir(), "jarvis_" + os.path.basename(papka.rstrip("\\/")))
     return shutil.make_archive(asos, "zip", root_dir=os.path.dirname(papka.rstrip("\\/")),
                                base_dir=os.path.basename(papka.rstrip("\\/")))
+
+
+# ---------- TIZIM: o'chirish, qayta yuklash, qulflash ----------
+def kompyuterni_ochir(soniya=15):
+    subprocess.run(f"shutdown /s /t {soniya}", shell=True, creationflags=KONSOLSIZ)
+
+
+def kompyuterni_restart(soniya=10):
+    subprocess.run(f"shutdown /r /t {soniya}", shell=True, creationflags=KONSOLSIZ)
+
+
+def ochirishni_bekor():
+    subprocess.run("shutdown /a", shell=True, creationflags=KONSOLSIZ)
+
+
+def kompyuterni_qulfla():
+    if WINDOWS:
+        subprocess.run("rundll32.exe user32.dll,LockWorkStation", shell=True, creationflags=KONSOLSIZ)
+
+
+def uyqu_rejimi():
+    if WINDOWS:
+        subprocess.run("rundll32.exe powrprof.dll,SetSuspendState 0,1,0", shell=True,
+                       creationflags=KONSOLSIZ)
