@@ -461,18 +461,24 @@ def telegram_xabar_qismlari(gap):
     boshi = next((i for i, s in enumerate(sozlar) if s.startswith(ilova_prefikslari)), -1)
     oxiri = len(sozlar) - 1 - sozlar[::-1].index("deb")
     orta = " ".join(sozlar[boshi + 1:oxiri]).strip()
-    qoshtirnoq = re.match(r'["“«]([^"”»]+)["”»]\s*(?:ga|ni|ning)?\s*(.*)$', orta)
+    # ko'p bosqichli gapdagi ortiqcha so'zlar ("chromega kirib ... qidir va kirib chatga otib")
+    filtr = {"kirib", "kir", "kirgin", "qidir", "qidirib", "qidirgin", "qidirib", "va", "keyin",
+             "otib", "o'tib", "otgin", "chatga", "chat", "messagega", "message", "direct",
+             "xabarga", "yozishma", "topib", "top", "ochib", "och", "so'ng", "unga", "shundan",
+             "deb", "kirvol", "kir"}
+    qoshtirnoq = re.match(r'["“«\']([^"”»\']+)["”»\']\s*(?:ga|ni|ning)?\s*(.*)$', orta)
     if qoshtirnoq:
-        xabar = qoshtirnoq.group(2).split()
-        if xabar and xabar[0].startswith(("guruh", "gurux", "kanal", "chat")):
-            xabar = xabar[1:]                          # "«bikent 48» guruhiga salom" -> "salom"
-        return qoshtirnoq.group(1).strip(), " ".join(xabar)
-    orta = orta.split()
+        nom = qoshtirnoq.group(1).strip()
+        xabar = [w for w in qoshtirnoq.group(2).split()
+                 if not w.startswith(("guruh", "gurux", "kanal", "chat"))]
+        return nom, " ".join(xabar)
+    orta = [s for s in orta.split() if s not in filtr]
+    # BIRINCHI "ga" — undan oldingisi kimga, keyingisi xabar
     for j, s in enumerate(orta):
         if s == "ga" and j > 0:                            # "my bro ga salom"
-            return " ".join(orta[:j]), " ".join(orta[j + 1:])
-        if s.endswith("ga") and len(s) > 3:                # "alisherga salom"
-            return " ".join(orta[:j] + [s[:-2]]), " ".join(orta[j + 1:])
+            return " ".join(orta[:j]).strip("\"'«»"), " ".join(orta[j + 1:]).strip()
+        if s.endswith("ga") and len(s) > 3 and not s.endswith(("chatga", "messagega")):
+            return " ".join(orta[:j] + [s[:-2]]).strip("\"'«»"), " ".join(orta[j + 1:]).strip()
     return None, None
 
 
@@ -1108,21 +1114,46 @@ def ilova_nomi(gap):
     return " ".join(sozlar).strip()
 
 
+# Dastur sifatida topilmasa, brauzerda ochiladigan mashhur saytlar
+SAYTLAR = {
+    "instagram": "https://www.instagram.com", "youtube": "https://www.youtube.com",
+    "facebook": "https://www.facebook.com", "telegram": "https://web.telegram.org",
+    "whatsapp": "https://web.whatsapp.com", "gmail": "https://mail.google.com",
+    "google": "https://www.google.com", "chatgpt": "https://chat.openai.com",
+    "tiktok": "https://www.tiktok.com", "twitter": "https://twitter.com",
+    "x": "https://twitter.com", "linkedin": "https://www.linkedin.com",
+    "github": "https://github.com", "netflix": "https://www.netflix.com",
+    "wikipedia": "https://www.wikipedia.org", "reddit": "https://www.reddit.com",
+    "olx": "https://www.olx.uz", "kun": "https://kun.uz", "yandex": "https://ya.ru",
+}
+
+
 def ilova_och(gap):
     nom = ilova_nomi(gap)
     if not nom:
         gapir("Qaysi dasturni ochay?")
         return
     topildi = kompyuter.ilova_top(nom)
-    if not topildi:
-        gapir(f"{nom} degan dastur topilmadi.")
+    if topildi:
+        nomi, yol = topildi
+        try:
+            kompyuter.ilova_och(yol)
+            gapir(f"{nomi} ochildi.")
+            return
+        except OSError:
+            pass
+    # o'rnatilgan dastur topilmadi — sayt sifatida brauzerda ochamiz
+    for kalit, url in SAYTLAR.items():
+        if bor(nom + " ", kalit) or kalit in nom.replace(" ", ""):
+            webbrowser.open(url)
+            gapir(f"{kalit} brauzerda ochildi.")
+            return
+    if "." in nom.replace(" ", ""):                 # "olx.uz" kabi manzil aytilsa
+        webbrowser.open("https://" + nom.replace(" ", ""))
+        gapir(f"{nom} ochildi.")
         return
-    nomi, yol = topildi
-    try:
-        kompyuter.ilova_och(yol)
-        gapir(f"{nomi} ochildi.")
-    except OSError:
-        gapir(f"{nomi} ochilmadi.")
+    gapir(f"{nom} degan dastur topilmadi. Sayt bo'lsa, to'liq nomini ayting, "
+          "masalan: instagram, youtube.")
 
 
 # ---------- 5.6. FAYL QIDIRISH ----------
@@ -1228,12 +1259,16 @@ def bajar(b):
     elif sozlama_buyrugi(b):
         pass
 
-    elif bor(b, "ekran rasm", "skrinshot", "screenshot", "скриншот", "ekranni rasm"):
+    elif bor(b, "ekran rasm", "skrinshot", "screenshot", "скриншот", "ekranni rasm",
+             "ekranni ol", "ekranni suratga", "skrin", "ekran surat") or (
+             bor(b, "screen") and bor(b, "ekran", "qil", "ol", "rasm")) \
+            or b.strip() in ("screen", "skrin", "скрин"):
         ekran_rasmi()
 
-    elif bor(b, "telegram", "телеграм") and "deb" in b.split() \
-            and b.split()[-1].startswith(("yoz", "yubor", "jo'nat")):
-        telegramda_yoz(b)
+    elif "deb" in b.split() and b.split()[-1].startswith(("yoz", "yubor", "jo'nat")) and (
+            bor(b, "telegram", "телеграм", "instagram", "инстаграм", "insta", "whatsapp",
+                "vatsap", "votsap", "ватсап", "messenger", "vkontakte") and bor(b, "ga ", "ga")):
+        ilovada_yoz(b)
 
     elif bosish_buyrugimi(b):
         tugma_bos(b)
@@ -1366,7 +1401,8 @@ def bajar(b):
         gapir("O'chirish bekor qilindi.")
 
     elif bor(b, "kompyuter", "komputer", "kompiyuter", "kampyuter", "kampiyuter", "noutbuk",
-             "sistema", "kampuyter") and bor(b, "qulf", "bloklab", "blokla", "lock", "заблок"):
+             "sistema", "kampuyter") and bor(b, "qulf", "qulufla", "quluf", "qulup", "bloklab",
+                                             "blokla", "lock", "лок", "заблок"):
         gapir("Kompyuter qulflandi.")
         kompyuter.kompyuterni_qulfla()
 
@@ -1395,9 +1431,6 @@ def bajar(b):
     elif bor(b, "jonli", "efir", "kuzat", "live") and bor(b, "ekran", "screen", "экран"):
         ekranni_kuzat()
 
-    elif bor(b, "instagram", "инстаграм", "whatsapp", "vatsap", "messenger", "vkontakte") \
-            and "deb" in b.split() and b.split()[-1].startswith(("yoz", "yubor", "jo'nat")):
-        ilovada_yoz(b)
 
     elif any(s.startswith("och") for s in b.split()) or bor(b, "ishga tushir"):
         ilova_och(b)
