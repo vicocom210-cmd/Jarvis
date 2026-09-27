@@ -1124,7 +1124,7 @@ ALOHIDA_QOSHIMCHALAR = {"ni", "di", "ga", "da", "dan", "ning", "ham", "u", "bu"}
 
 def ilova_nomi(gap):
     """'photoshopni ochib ber' -> 'photoshop';  'kampiyuterimdan proton vpn ni och' -> 'proton vpn'"""
-    ortiqcha = ("och", "ishga", "tushir", "dastur", "ilova", "programma", "menga",
+    ortiqcha = ("och", "kir", "ishga", "tushir", "dastur", "ilova", "programma", "menga",
                 "iltimos", "ber", "yoq") + KOMPYUTER_SOZLARI
     sozlar = []
     for s in gap.split():
@@ -1398,7 +1398,34 @@ def bajar(b):
         subprocess.Popen("calc")
         gapir("Kalkulyator ochildi.")
 
-    elif bor(b, "papka", "fayllar", "provodnik"):
+    elif bor(b, "this pc", "bu kompyuter", "mening kompyuter", "kompyuterim", "computer",
+             "мой компьютер", "этот компьютер") and bor(b, "och", "kir", "ko'rsat", "ber"):
+        subprocess.Popen("explorer shell:MyComputerFolder", shell=True)
+        gapir("Bu kompyuter ochildi.")
+
+    elif bor(b, "disk", "диск") and bor(b, "och", "kir", "ko'rsat", "ber"):
+        m = re.search(r"([a-z])\s*(?:disk|диск)", b)
+        harf = m.group(1).upper() if m else "C"
+        yol = f"{harf}:\\"
+        if os.path.exists(yol):
+            subprocess.Popen(f'explorer "{yol}"', shell=True)
+            gapir(f"{harf} diski ochildi.")
+        else:
+            gapir(f"{harf} diski topilmadi.")
+
+    elif bor(b, "yuklama", "hujjatlar papka", "rasmlar papka", "videolar papka", "musiqa papka",
+             "ish stoli", "downloads", "documents", "pictures", "videos") and bor(
+             b, "och", "kir", "ko'rsat", "ber"):
+        papkalar = [(("yuklama", "download"), "Downloads"), (("hujjat", "document"), "Documents"),
+                    (("rasm", "picture"), "Pictures"), (("video",), "Videos"),
+                    (("musiqa", "music"), "Music"), (("ish stoli", "desktop"), "Desktop")]
+        nom = next((p for sozlar, p in papkalar if bor(b, *sozlar)), "Downloads")
+        yol = kompyuter.desktop_yoli() if nom == "Desktop" else os.path.join(os.path.expanduser("~"), nom)
+        subprocess.Popen(f'explorer "{yol}"', shell=True)
+        gapir(f"{nom} papkasi ochildi.")
+
+    elif bor(b, "papka", "fayllar", "provodnik", "file explorer", "fayl menejer", "file", "fayl",
+             "explorer", "проводник") and not bor(b, "yubor", "tashla", "qidir", "top"):
         subprocess.Popen("explorer")
         gapir("Fayllar ochildi.")
 
@@ -1458,7 +1485,7 @@ def bajar(b):
         ekranni_kuzat()
 
 
-    elif any(s.startswith("och") for s in b.split()) or bor(b, "ishga tushir"):
+    elif any(s.startswith(("och", "kir")) for s in b.split()) or bor(b, "ishga tushir"):
         ilova_och(b)
 
     elif b:
