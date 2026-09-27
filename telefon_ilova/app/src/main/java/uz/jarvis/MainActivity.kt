@@ -146,9 +146,10 @@ class MainActivity : android.app.Activity() {
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(v: Float) {}
             override fun onBufferReceived(b: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onError(xato: Int) { jsChaqir("tinglashTugadi") }
+            override fun onEndOfSpeech() { beepOchir(false) }
+            override fun onError(xato: Int) { beepOchir(false); jsChaqir("tinglashTugadi") }
             override fun onResults(natijalar: Bundle?) {
+                beepOchir(false)
                 val ro = natijalar?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val matn = ro?.firstOrNull() ?: ""
                 jsNatija(matn)
@@ -156,7 +157,18 @@ class MainActivity : android.app.Activity() {
             override fun onPartialResults(p: Bundle?) {}
             override fun onEvent(t: Int, p: Bundle?) {}
         })
+        beepOchir(true)                    // tinglash "biq" tovushini o'chiramiz
         sr?.startListening(intent)
+    }
+
+    // SpeechRecognizer'ning "biq" tovushini vaqtincha o'chiradi (musiqa oqimi)
+    private val am by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
+    private fun beepOchir(ochir: Boolean) {
+        try {
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                if (ochir) android.media.AudioManager.ADJUST_MUTE
+                else android.media.AudioManager.ADJUST_UNMUTE, 0)
+        } catch (e: Exception) {}
     }
 
     private fun jsNatija(matn: String) {

@@ -115,16 +115,28 @@ class OverlayService : Service() {
             override fun onPartialResults(p: Bundle?) {}
             override fun onEvent(t: Int, p: Bundle?) {}
         })
+        beepOchir(true)
         try { sr?.startListening(intent); tinglayapti = true } catch (e: Exception) {}
     }
 
+    private val am by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
+    private fun beepOchir(ochir: Boolean) {
+        try {
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                if (ochir) android.media.AudioManager.ADJUST_MUTE
+                else android.media.AudioManager.ADJUST_UNMUTE, 0)
+        } catch (e: Exception) {}
+    }
+
     private fun qaytaTingla() {
+        beepOchir(false)
         shar?.postDelayed({
             try {
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "uz-UZ")
                 }
+                beepOchir(true)
                 sr?.startListening(intent)
             } catch (e: Exception) {}
         }, 800)

@@ -176,7 +176,9 @@ const RANG={
 const S={ip:localStorage.getItem('ip')||'', pin:localStorage.getItem('pin')||'0000',
   groq:localStorage.getItem('groq')||'', til:localStorage.getItem('til')||'uz',
   rang:localStorage.getItem('rang')||'kok', kanal:localStorage.getItem('kanal')||''};
-let L=TIL[S.til]||TIL.uz, rejim='suhbat', tarix=[], mikYoniq=true, gapiryapti=false, kutmoqda=false;
+let L=TIL[S.til]||TIL.uz, rejim='suhbat', tarix=[], mikYoniq=true, gapiryapti=false, kutmoqda=false, kutmoqdaTimer=null;
+function kutmoqdaYoq(){ kutmoqda=true; clearTimeout(kutmoqdaTimer);
+  kutmoqdaTimer=setTimeout(()=>{ kutmoqda=false; },8000); }   // 8s ichida gapirmasa, yana "Jarvis" kutamiz
 
 function tilQoy(t){ S.til=t; L=TIL[t]||TIL.uz;
   document.getElementById('t-suhbat').textContent=L.suhbat;
@@ -263,19 +265,19 @@ function chaqiruvmi(s){ s=s.toLowerCase();
 
 function ishlash(t){
   t=(t||'').trim(); if(!t){ davomTingla(); return; }
-  if(kutmoqda){ kutmoqda=false; pufak('men',t); yurgiz(t); return; }   // "Jarvis" dan keyingi buyruq
+  if(kutmoqda){ kutmoqda=false; clearTimeout(kutmoqdaTimer); pufak('men',t); yurgiz(t); return; }   // "Jarvis" dan keyingi buyruq
   // "jarvis" so'zini qidiramiz
   if(chaqiruvmi(t)){
     const sozlar=t.split(/\s+/); const idx=sozlar.findIndex(w=>chaqiruvmi(w));
     const qolgan=sozlar.slice(idx+1).join(' ').trim();
     if(qolgan){ pufak('men',qolgan); yurgiz(qolgan); }               // "jarvis youtube och"
-    else { pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqda=true; } // faqat "jarvis"
+    else { pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqdaYoq(); } // faqat "jarvis"
   } else { davomTingla(); }   // "jarvis" yo'q — e'tibor bermaymiz (fon shovqini)
 }
 
 function stikerYubor(t){ tabTanla('suhbat'); pufak('men',t); yurgiz(t); }
 // Suzuvchi shardan chaqirilganda
-window.uygon=function(){ pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqda=true; };
+window.uygon=function(){ pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqdaYoq(); };
 window.uygonBuyruq=function(t){ t=(t||'').trim(); if(!t){ window.uygon(); return; }
   tabTanla('suhbat'); pufak('men',t); yurgiz(t); };
 function yubor(){ const t=matn.value.trim(); if(!t) return; matn.value=''; pufak('men',t); yurgiz(t); }
