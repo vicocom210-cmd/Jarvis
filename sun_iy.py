@@ -12,7 +12,12 @@ Suhbat xotirasi: oxirgi bir necha gap eslab qolinadi (ketma-ket savol berish mum
 """
 import json
 import os
+import urllib.error
 import urllib.request
+
+# Groq bepul modellari — biri ishlamasa, keyingisi sinaladi
+GROQ_MODELLAR = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192",
+                 "gemma2-9b-it"]
 
 TIZIM = ("Sen Jarvis ismli shaxsiy ovozli yordamchisan. Foydalanuvchi ismi: {ism}. "
          "Hamisha {til_nomi} tilida, samimiy, qisqa (1-3 gap) javob ber. "
@@ -25,8 +30,12 @@ tarix = []                       # [(rol, matn), ...] — oxirgi suhbat
 def _sorov(url, malumot, sarlavhalar, timeout=30):
     xom = json.dumps(malumot).encode("utf-8")
     sorov = urllib.request.Request(url, data=xom, headers=sarlavhalar)
-    with urllib.request.urlopen(sorov, timeout=timeout) as javob:
-        return json.loads(javob.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(sorov, timeout=timeout) as javob:
+            return json.loads(javob.read().decode("utf-8"))
+    except urllib.error.HTTPError as xato:
+        tana = xato.read().decode("utf-8", "ignore")[:400]      # xato sababini o'qiymiz
+        raise RuntimeError(f"HTTP {xato.code}: {tana}")
 
 
 def bormi():
@@ -39,13 +48,20 @@ def _groq(savol, tizim):
     for rol, matn in tarix[-6:]:
         xabarlar.append({"role": rol, "content": matn})
     xabarlar.append({"role": "user", "content": savol})
-    natija = _sorov(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {"model": "llama-3.3-70b-versatile", "messages": xabarlar, "max_tokens": 400,
-         "temperature": 0.7},
-        {"Authorization": "Bearer " + os.environ["GROQ_API_KEY"],
-         "Content-Type": "application/json"})
-    return natija["choices"][0]["message"]["content"].strip()
+    sarlavhalar = {"Authorization": "Bearer " + os.environ["GROQ_API_KEY"].strip(),
+                   "Content-Type": "application/json"}
+    oxirgi_xato = None
+    for model in GROQ_MODELLAR:                              # biri ishlamasa, keyingisi
+        try:
+            natija = _sorov("https://api.groq.com/openai/v1/chat/completions",
+                            {"model": model, "messages": xabarlar, "max_tokens": 400,
+                             "temperature": 0.7}, sarlavhalar)
+            return natija["choices"][0]["message"]["content"].strip()
+        except RuntimeError as xato:
+            oxirgi_xato = xato
+            if "HTTP 401" in str(xato) or "invalid_api_key" in str(xato):
+                break                                       # kalit noto'g'ri — modelni almashtirish yordam bermaydi
+    raise oxirgi_xato
 
 
 def _gemini(savol, tizim):
