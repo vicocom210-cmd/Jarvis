@@ -29,6 +29,12 @@ tarix = []                       # [(rol, matn), ...] — oxirgi suhbat
 
 def _sorov(url, malumot, sarlavhalar, timeout=30):
     xom = json.dumps(malumot).encode("utf-8")
+    # Cloudflare (xato 1010) oddiy so'rovni bloklaydi — brauzerdek ko'rsatamiz
+    sarlavhalar = dict(sarlavhalar)
+    sarlavhalar.setdefault("User-Agent",
+                           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+    sarlavhalar.setdefault("Accept", "application/json")
     sorov = urllib.request.Request(url, data=xom, headers=sarlavhalar)
     try:
         with urllib.request.urlopen(sorov, timeout=timeout) as javob:
