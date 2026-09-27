@@ -32,10 +32,12 @@ import pygame
 import pyperclip
 import speech_recognition as sr
 
+import arxiv
 import bilim
 import boshqaruv
 import bulut
 import kompyuter
+import qulayliklar
 import sozlamalar
 import suhbat
 import server
@@ -96,6 +98,7 @@ def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False):
         matn = tarjima(matn, "uz", til())
     print(f"Jarvis: {matn}")
     ui_navbat.put(("jarvis", matn))
+    arxiv.yoz("jarvis", matn)
     yiguvchi = getattr(web_holati, "yig", None)
     if yiguvchi is not None:        # buyruq telefon ilovasidan keldi — javobni to'playmiz
         yiguvchi.append(matn)
@@ -141,8 +144,12 @@ def _ovoz_yasa(matn, ovoz):
     return malumot
 
 
+EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2190-\u21FF\u2B00-\u2BFF\uFE0F\u200D]+")
+
+
 def _gapir(matn, ovoz=None):
     try:
+        matn = EMOJI_RE.sub("", matn).strip() or matn      # emojilarni ovoz chiqarib o'qimaymiz
         malumot = _ovoz_yasa(matn, ovoz or ovoz_nomi())
         try:
             tovush = pygame.mixer.Sound(file=io.BytesIO(malumot))
@@ -280,6 +287,7 @@ def matnga_aylantir(audio, gapirganda=False, jarvis_gapi=""):
 def keyingi_gap(kutish):
     """Navbatdan keyingi gapni oladi (ovoz yoki yozuv). Jarvis gapirib bo'lishidan
     oldin eshitilgan eski gaplar tashlab yuboriladi."""
+    global asl_matn
     tugash = time.time() + kutish
     while True:
         qoldi = tugash - time.time()
@@ -296,9 +304,11 @@ def keyingi_gap(kutish):
             gapir(f"Salom, {ISM}! Men shu ovozda gapiraman.",
                   ovoz=sozlamalar.TILLAR[til()][matn])
             continue
-        if manba in ("yozuv", "telegram"):
+        asl = matn
+        if manba in ("yozuv", "telegram", "chat"):
             matn = normallashtir(matn)
         if vaqt >= gap_tugadi or manba == "uzish":
+            asl_matn = asl                      # xabar yozishda asl harflar kerak bo'ladi
             uzildi.clear()                      # yangi gap keldi — Jarvis yana gapira oladi
             return manba, matn
 
@@ -312,6 +322,7 @@ def eshit(kutish=8):
     if not gap:
         return ""
     ui_navbat.put(("siz", gap[1]))
+    arxiv.yoz("siz", asl_matn or gap[1], gap[0])
     return ichki_tilga(gap[1])
 
 
@@ -352,6 +363,9 @@ bot = None                        # ishlab turgan Telegram bot
 web_holati = threading.local()    # telefon ilovasidan kelgan buyruq javobini to'plash uchun
 web_qulfi = threading.Lock()      # bir vaqtda bitta web buyruq bajariladi
 javob_telegramga = False          # hozirgi buyruq telefondan keldimi (javob ham o'sha yoqqa)
+asl_matn = ""                     # hozirgi buyruqning asl yozuvi (katta-kichik harflari bilan)
+xom_rejim = False                 # buyruq '/' bilan boshlandi — xabar aynan yozilgandek ketadi
+eslatmalar = None                 # qulayliklar.Eslatmalar — miya() ishga tushganda yaratiladi
 
 
 def telegram_holati(holat_, qiymat):
@@ -535,6 +549,72 @@ def telegram_xabar_qismlari(gap):
     return None, None
 
 
+# ---------- 2.2.1. XABARNI CHIROYLI QILISH ----------
+# Oddiy tuzatish (AI kaliti bo'lmasa ham ishlaydi): ko'p uchraydigan imlo xatolari
+IMLO = {"suniy": "sun'iy", "sunniy": "sun'iy", "intelekt": "intellekt", "intelektiman": "intellektman",
+        "intelektman": "intellektman", "malumot": "ma'lumot", "manba": "manba", "rahmat": "rahmat",
+        "raxmat": "rahmat", "iltimos": "iltimos", "xop": "xo'p", "hop": "xo'p", "yaxshimisz": "yaxshimisiz",
+        "qalesan": "qalaysan", "qalesiz": "qalaysiz", "tugulgan": "tug'ilgan", "tugilgan": "tug'ilgan",
+        "jarvis": "Jarvis", "ertaga": "ertaga", "bugun": "bugun", "togri": "to'g'ri", "notogri": "noto'g'ri",
+        "yoq": "yo'q", "boldi": "bo'ldi", "bolsa": "bo'lsa", "kerak": "kerak", "ozbek": "o'zbek"}
+# Mazmunga mos emoji (AI bo'lmasa)
+EMOJILAR = [(("salom", "assalom"), "👋"), (("rahmat", "tashakkur"), "🙏"),
+            (("tug'ilgan kun", "tabrik", "muborak"), "🎉"), (("sevaman", "yaxshi ko'raman"), "❤️"),
+            (("jarvis", "sun'iy intellekt", "robot"), "🤖"), (("uxla", "tun", "xayrli tun"), "🌙"),
+            (("tong", "xayrli tong"), "☀️"), (("kechir", "uzr"), "🙏"), (("kul", "hazil", "haha"), "😄"),
+            (("ovqat", "osh", "tushlik"), "🍽️"), (("futbol", "o'yin"), "⚽"), (("dars", "o'qish"), "📚")]
+
+
+def asl_korinish(qism):
+    """Buyruq ichidagi qismni ASL ko'rinishida (katta-kichik harflari bilan) qaytaradi.
+    normallashtir() hamma harfni kichik qiladi — xabar uchun asl yozuv kerak."""
+    asl = asl_matn or ""
+    kichik = normallashtir(asl) if asl else ""
+    if asl and len(kichik) == len(asl.strip()):
+        i = kichik.find(qism)
+        if i >= 0:
+            return asl.strip()[i:i + len(qism)]
+    return qism
+
+
+def oddiy_tuzat(matn):
+    """AI'siz tuzatish: bo'shliqlar, tinish belgilari, gap boshidagi katta harf, emoji."""
+    matn = re.sub(r"\s+", " ", matn).strip()
+    matn = re.sub(r"\s+([.,!?;:])", r"\1", matn)               # "man ." -> "man."
+    matn = re.sub(r"([.,!?;:])(?=\S)", r"\1 ", matn)            # "man.men" -> "man. men"
+    sozlar = []
+    for soz in matn.split(" "):
+        toza = soz.strip(".,!?;:").lower()
+        if toza in IMLO:
+            soz = soz.lower().replace(toza, IMLO[toza])
+        sozlar.append(soz)
+    matn = " ".join(sozlar)
+    matn = re.sub(r"\bjarvis man\b", "Jarvisman", matn, flags=re.IGNORECASE)
+    matn = re.sub(r"(^|[.!?]\s+)(\w)", lambda m: m.group(1) + m.group(2).upper(), matn)
+    if ISM:
+        matn = re.sub(rf"\b{re.escape(ISM.lower())}", ISM, matn)
+    if matn and matn[-1] not in ".!?…" and not re.search(r"[\U0001F300-\U0001FAFF]$", matn):
+        matn += "."
+    kichik = matn.lower()
+    emoji = next((e for sozlar_, e in EMOJILAR if any(s in kichik for s in sozlar_)), "🙂")
+    return f"{matn} {emoji}"
+
+
+def xabarni_tayyorla(xabar):
+    """Yuboriladigan xabarni tayyorlaydi.
+    '/' bilan boshlangan buyruq yoki xabar — AYNAN siz yozgandek ketadi.
+    Aks holda — imlo xatolari tuzatiladi va mos emoji qo'shiladi."""
+    xom = xom_rejim
+    asl = asl_korinish(xabar).strip()
+    if asl.startswith("/"):
+        xom, asl = True, asl[1:].strip()
+    if xom:
+        return asl
+    asl = asl.strip('"“”«»\'').strip()
+    tuzatilgan = sun_iy.tahrir(asl, til()) if sun_iy.bormi() else None
+    return tuzatilgan or oddiy_tuzat(asl)
+
+
 def telegramda_yoz(gap):
     nom, xabar = telegram_xabar_qismlari(gap)
     if not nom or not xabar:
@@ -543,6 +623,7 @@ def telegramda_yoz(gap):
     for kalit, haqiqiy in TELEGRAM_NOMLAR.items():        # noto'g'ri eshitilgan nomlarni to'g'rilaymiz
         if kalit in nom:
             nom = haqiqiy
+    xabar = xabarni_tayyorla(xabar)
     # Ovoz bilan aytilgan bo'lsa — Google noto'g'ri eshitgan bo'lishi mumkin, so'rab olamiz
     if oxirgi_manba == "ovoz" and not tasdiqla(f"Telegramda {nom} ga {xabar} deb yozaymi?"):
         gapir("Bekor qilindi.")
@@ -599,6 +680,7 @@ def ilovada_yoz(gap):
         gapir("Qaysi ilovada, kimga va nima deb yozay? Masalan: "
               "instagramda Alisherga salom deb yoz.")
         return
+    xabar = xabarni_tayyorla(xabar)
     if oxirgi_manba == "ovoz" and not tasdiqla(
             f"{ilova} da {nom} ga {xabar} deb yozaymi?"):
         gapir("Bekor qilindi.")
@@ -899,12 +981,52 @@ def web_tasdiqla_ogohlantir():
     return False
 
 
+def eslatma_vaqti(ish, kechikdi=False):
+    """Eslatma vaqti keldi: ovoz chiqarib aytadi, Telegram'ga yuboradi, chatda ko'rinadi."""
+    matn = f"⏰ {ISM}, eslatma: {ish}!"
+    if kechikdi:
+        matn += " (Kompyuter o'chiq bo'lgani uchun biroz kechikdi.)"
+    if bot and bot.egasi and not javob_telegramga:
+        fonda(bot.yoz, matn)                    # telefonda ham ko'rasiz
+    ui_navbat.put(("korsat",))
+    gapir(matn, uzilmas=True)
+
+
+def chat_och():
+    """Chat oynasini alohida dastur oynasi kabi ochadi (Edge/Chrome "ilova" rejimi).
+    Brauzer topilmasa — oddiy brauzerda."""
+    url = f"http://127.0.0.1:{server.PORT}/chat"
+    if os.name == "nt":
+        yollar = [os.path.expandvars(p) for p in (
+            r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+            r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+            r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+            r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
+            r"%LocalAppData%\Google\Chrome\Application\chrome.exe")]
+        for yol in yollar:
+            if os.path.exists(yol):
+                try:
+                    subprocess.Popen([yol, f"--app={url}", "--window-size=1150,780"])
+                    return
+                except OSError:
+                    pass
+    webbrowser.open(url)
+
+
+def chatdan_keldi(matn):
+    """Chat oynasida yozilgan gap — xuddi pastdagi maydonga yozilgandek miya'ga boradi
+    (tasdiq so'ralsa, 'ha'ni ham chatdan yozish mumkin)."""
+    kirish_navbat.put(("chat", matn, time.time()))
+
+
 def web_bajar(matn):
     """Telefon ilovasidan kelgan buyruqni bajaradi va Jarvis javobini matn qilib qaytaradi."""
-    global oxirgi_manba
+    global oxirgi_manba, asl_matn
     with web_qulfi:
         web_holati.yig = []
         oxirgi_manba = "web"
+        asl_matn = matn
+        arxiv.yoz("siz", matn, "telefon")
         try:
             bajar(ichki_tilga(normallashtir(matn)))
         except Exception as xato:
@@ -1541,6 +1663,15 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
                 "Men quyidagilarni qila olaman: YouTube, Telegram, brauzer, bloknot, "
                 "kalkulyator va papkalarni ochaman. Telegramda guruhni ham ocha olaman. "
                 "Soat va sanani aytaman. "
+                "Ob-havoni aytaman, masalan: Samarqandda ob-havo qanday. "
+                "Dollar, yevro, rubl kursini Markaziy bankdan aytaman. "
+                "Eslataman, masalan: 10 daqiqadan keyin choy ichishni eslat, yoki soat 18:30 da darsni eslat. "
+                "Eslab qolaman, masalan: eslab qol, wifi paroli 12345. Keyin qaydlarim deng. "
+                "Xayrli tong desangiz — kunlik xulosa: ob-havo, kurs va eslatmalar. "
+                "Kompyuter holatini aytaman: xotira, batareya, disk. "
+                "Chatni och desangiz — barcha suhbatlarimiz arxivi ochiladi. "
+                "Telegramga xabarni imlo xatosiz va emoji bilan yozaman; "
+                "chiziqcha bilan, ya'ni / bilan boshlasangiz — aynan yozganingizdek yuboraman. "
                 "Ovozni oshiraman yoki pasaytiraman. Googledan qidiraman. "
                 "YouTubedan musiqa qo'yaman, masalan: youtubedan babylon musiqasini qo'y. "
                 "Musiqani tinglab, nomini ham topaman, buning uchun: bu qanaqa qo'shiq, deng. "
@@ -1562,7 +1693,13 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
 # ---------- 6. BUYRUQLAR (faqat ruxsat berilganlar) ----------
 def bajar(b):
     """False qaytarsa, dastur to'xtaydi."""
-    if bor(b, "xayr"):
+    global xom_rejim
+    xom_rejim = b.startswith("/")            # "/..." — xabar tuzatilmasdan, aynan ketadi
+    if xom_rejim:
+        b = b[1:].strip()
+    sozlar = b.replace(",", " ").replace("!", " ").split()
+    # Faqat "xayr" / "xayr jarvis" — "xayrli tong", "xayrli kech" dasturni yopmasin
+    if "xayr" in sozlar and len(sozlar) <= 3:
         gapir(f"Xayr, {ISM}!")
         return False
 
@@ -1570,6 +1707,80 @@ def bajar(b):
     # chalkashliklar bo'lmasligi uchun)
     elif bor(b, "telefon", "телефон", "smartfon") and telefon_amal(b):
         pass
+
+    elif (bor(b, "arxiv", "архив", "suhbatlar tarixi", "tarixni") or (
+            bor(b, "chat", "чат") and bor(b, "och", "ko'rsat", "откр")))\
+            and not bor(b, "yoz", "yubor", "telegram", "instagram", "whatsapp"):
+        chat_och()
+        gapir("Chat oynasini ochdim. Barcha suhbatlarimiz arxivda saqlangan.")
+
+    # ----- kundalik qulayliklar -----
+    elif bor(b, "shahrim", "men yashaydigan shahar") and qulayliklar.shahar_top(b, "")[0]:
+        shahar, nomi = qulayliklar.shahar_top(b, "")
+        sozlama_ozgartir("shahar", next(k for k, v in qulayliklar.SHAHARLAR.items() if v[1] == nomi),
+                         ayt=False)
+        gapir(f"Eslab qoldim: shahringiz {nomi}. Endi ob-havoni shu shahar uchun aytaman.")
+
+    elif bor(b, "xayrli tong", "brifing", "bugungi xulosa", "kunlik xulosa", "доброе утро"):
+        gapir("Bir soniya, ma'lumotlarni yig'yapman.")
+        gapir(qulayliklar.brifing(ISM, SOZ.get("shahar", "toshkent"),
+                                  len(eslatmalar.faollar()) if eslatmalar else 0))
+
+    elif bor(b, "ob-havo", "ob havo", "obhavo", "havo qanday", "harorat", "necha gradus",
+             "погода", "weather", "yomg'ir yog'adimi", "sovuqmi", "issiqmi"):
+        gapir(qulayliklar.ob_havo(b, SOZ.get("shahar", "toshkent")))
+
+    elif bor(b, "kurs", "курс") or (bor(b, *qulayliklar.VALYUTALAR) and bor(b, "necha", "qancha", "narx")):
+        gapir(qulayliklar.kurs(b))
+
+    elif bor(b, "eslatmalar", "eslatmalarim", "taymerlar") and bor(b, "o'chir", "bekor", "tozala"):
+        soni = eslatmalar.tozala() if eslatmalar else 0
+        gapir(f"{soni} ta eslatma bekor qilindi." if soni else "Faol eslatma yo'q edi.")
+
+    elif bor(b, "eslatmalarim", "eslatmalar", "taymerlar", "qanday eslatma"):
+        faol = eslatmalar.faollar() if eslatmalar else []
+        if not faol:
+            gapir("Hozir faol eslatma yo'q.")
+        else:
+            gapir(f"{len(faol)} ta eslatma bor: " + "; ".join(
+                f"{e['ish']} — {datetime.datetime.fromtimestamp(e['vaqt']):%H:%M} da" for e in faol[:5]) + ".")
+
+    elif bor(b, "qaydlarni o'chir", "qaydlarimni o'chir", "eslab qolganlaringni o'chir"):
+        if tasdiqla("Barcha qaydlarni o'chiraymi?"):
+            qulayliklar.qaydlarni_ochir()
+            gapir("Qaydlar o'chirildi.")
+
+    elif bor(b, "qaydlarim", "nimalarni eslab qolding", "eslab qolganlaring", "qaydlarni ayt",
+             "qaydlarni o'qi"):
+        royxat = qulayliklar.qaydlar()
+        if not royxat:
+            gapir("Hali hech narsa eslab qolmadim. Masalan: eslab qol, wifi paroli 12345.")
+        else:
+            gapir(f"{len(royxat)} ta qayd bor. " + " ".join(
+                f"{i}) {q['matn']}." for i, q in enumerate(royxat[-7:], 1)))
+
+    elif bor(b, "eslab qol", "yodda tut", "qayd qil", "запомни"):
+        matn = qulayliklar.qayd_matni(asl_korinish(b) if asl_matn else b) or qulayliklar.qayd_matni(b)
+        if not matn:
+            gapir("Nimani eslab qolay? Masalan: eslab qol, mashina raqami 01 A 777 AA.")
+        else:
+            soni = qulayliklar.qayd_qosh(matn)
+            gapir(f"Eslab qoldim ✅ Bu {soni}-qayd. 'Qaydlarim' desangiz, hammasini aytaman.")
+
+    elif bor(b, "eslat", "esimga sol", "taymer", "budilnik", "напомни", "remind") \
+            and not bor(b, "deb yoz", "telegram", "instagram"):
+        soniya, ish = qulayliklar.eslatma_ajrat(b)
+        if not soniya:
+            gapir("Qachon eslatay? Masalan: 10 daqiqadan keyin choy ichishni eslat, "
+                  "yoki soat 18:30 da darsni eslat.")
+        elif eslatmalar:
+            eslatmalar.qosh(soniya, ish)
+            vaqt = datetime.datetime.now() + datetime.timedelta(seconds=soniya)
+            gapir(f"Xo'p! {qulayliklar.vaqt_matn(soniya)} keyin, soat {vaqt:%H:%M} da eslataman: {ish}. ⏰")
+
+    elif bor(b, "kompyuter holati", "kompyuter qanday", "batareya", "zaryad", "operativ xotira",
+             "kompyuter qiziyaptimi", "kompyuter sekin"):
+        gapir(qulayliklar.kompyuter_holati())
 
     elif bor(b, "musiq", "qo'shiq", "video", "pauza") and bor(b, "to'xtat", "pauza", "davom"):
         pyautogui.press("playpause")                # klaviaturadagi ⏯ tugmasi
@@ -1806,12 +2017,17 @@ def bajar(b):
 
 # ---------- ASOSIY SIKL (miya thread'i) ----------
 def miya():
-    global media_boshlandi, javob_telegramga, oxirgi_manba
+    global media_boshlandi, javob_telegramga, oxirgi_manba, eslatmalar
     ui_navbat.put(("sozlamalar", dict(SOZ)))
     telegram_ishga_tushir()
+    eslatmalar = qulayliklar.Eslatmalar(eslatma_vaqti)     # eski eslatmalar ham tiklanadi
     pin = str(SOZ.get("telefon_pin") or "0000")
+    server.chat_sozla(chatdan_keldi, lambda: joriy_holat)
     if server.ishga_tushir(web_bajar, pin):
         print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
+        print(f"💬 Chat va arxiv: http://127.0.0.1:{server.PORT}/chat")
+        if SOZ.get("chat_avto", True):
+            chat_och()                              # chat oynasi o'zi ochiladi
     # Bulut ko'prigi — istalgan joydan ishlash uchun (bir Wi-Fi shart emas)
     kanal = SOZ.get("telefon_kanal")
     if not kanal:
@@ -1853,6 +2069,7 @@ def miya():
         javob_telegramga = manba == "telegram"
         oxirgi_manba = "ovoz" if manba == "uzish" else manba
         ui_navbat.put(("siz", ("(Telegram) " if javob_telegramga else "") + gap))
+        arxiv.yoz("siz", asl_matn if manba != "ovoz" else gap, manba)
         if javob_telegramga and not buyruq:
             buyruq = "salom"
         if not buyruq:

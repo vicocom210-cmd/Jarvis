@@ -6,13 +6,31 @@ Xavfsizlik: har bir so'rovda PIN kod tekshiriladi (sozlamalarda saqlanadi).
 Faqat mahalliy tarmoqdan (Wi-Fi) ishlaydi, internetga chiqmaydi.
 """
 import json
+import os
+import sys
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import arxiv
 
 PORT = 8770
 _bajaruvchi = None          # (matn) -> javob  — jarvis.py beradi
 _pin = "0000"
 _server = None
+_chat_qabul = None          # (matn) -> None  — chat oynasidan yozilgan gap (jarvis.py beradi)
+_holat_ol = None            # () -> "kutish"/"tinglash"/"o'ylash"/"gapirish"
+
+
+def chat_sozla(qabul, holat_ol):
+    global _chat_qabul, _holat_ol
+    _chat_qabul, _holat_ol = qabul, holat_ol
+
+
+def _manba_yoli(nom):
+    """Fayl yo'li — oddiy ishga tushirishda ham, EXE ichida ham (PyInstaller) ishlaydi."""
+    asos = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(asos, nom)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -29,9 +47,51 @@ class _Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self._javob(200, {"ok": True})
 
+    def _mahalliymi(self):
+        """Chat va arxiv faqat shu kompyuterning o'zidan ochiladi (Wi-Fi'dagi boshqalar ko'rmaydi)."""
+        if self.client_address[0] not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+            return False
+        # Brauzerdagi begona sayt localhost orqali buyruq bera olmasin (faqat chat sahifasining o'zi)
+        manba = self.headers.get("Origin")
+        return manba in (None, f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}")
+
     def do_GET(self):
-        if self.path.startswith("/holat"):
+        yol = urllib.parse.urlparse(self.path)
+        q = urllib.parse.parse_qs(yol.query)
+        if yol.path.startswith("/holat"):
             self._javob(200, {"ok": True, "nom": "Jarvis kompyuter"})
+            return
+        if not (yol.path == "/chat" or yol.path.startswith("/api/")):
+            self._javob(404, {"ok": False})
+            return
+        if not self._mahalliymi():
+            self._javob(403, {"ok": False, "xato": "Chat faqat kompyuterning o'zida ochiladi"})
+            return
+        if yol.path == "/chat":
+            try:
+                with open(_manba_yoli("chat.html"), "rb") as f:
+                    tana = f.read()
+            except OSError:
+                self._javob(500, {"ok": False, "xato": "chat.html topilmadi"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(tana)))
+            self.end_headers()
+            self.wfile.write(tana)
+        elif yol.path == "/api/kunlar":
+            self._javob(200, {"ok": True, "kunlar": arxiv.kunlar()})
+        elif yol.path == "/api/kun":
+            self._javob(200, {"ok": True, "yozuvlar": arxiv.kun(q.get("sana", [""])[0])})
+        elif yol.path == "/api/qidir":
+            self._javob(200, {"ok": True, "yozuvlar": arxiv.qidir(q.get("q", [""])[0])})
+        elif yol.path == "/api/yangi":
+            try:
+                oxirgi = int(q.get("keyin", ["0"])[0])
+            except ValueError:
+                oxirgi = 0
+            self._javob(200, {"ok": True, "yozuvlar": arxiv.keyin(oxirgi),
+                              "holat": _holat_ol() if _holat_ol else "kutish"})
         else:
             self._javob(404, {"ok": False})
 
@@ -41,6 +101,20 @@ class _Handler(BaseHTTPRequestHandler):
             malumot = json.loads(self.rfile.read(uzunlik).decode("utf-8"))
         except (ValueError, TypeError):
             self._javob(400, {"ok": False, "xato": "noto'g'ri so'rov"})
+            return
+        if self.path.startswith("/api/"):
+            if not self._mahalliymi():
+                self._javob(403, {"ok": False})
+                return
+            if self.path.startswith("/api/chat"):
+                matn = (malumot.get("matn") or "").strip()
+                if matn and _chat_qabul:
+                    _chat_qabul(matn)
+                self._javob(200, {"ok": bool(matn)})
+            elif self.path.startswith("/api/ochir"):
+                self._javob(200, {"ok": arxiv.ochir(malumot.get("sana", ""))})
+            else:
+                self._javob(404, {"ok": False})
             return
         if str(malumot.get("pin", "")) != _pin:
             self._javob(403, {"ok": False, "xato": "PIN noto'g'ri"})
