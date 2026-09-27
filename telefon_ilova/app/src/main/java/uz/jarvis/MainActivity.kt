@@ -40,17 +40,25 @@ class MainActivity : android.app.Activity() {
         web.addJavascriptInterface(Kopruk(), "Android")
         web.loadUrl("file:///android_asset/index.html")
 
-        tts = TextToSpeech(this) { holat ->
-            if (holat == TextToSpeech.SUCCESS) {
-                // Avval o'zbek, bo'lmasa rus, bo'lmasa standart
-                for (til in listOf(Locale("uz"), Locale("ru"), Locale.getDefault())) {
-                    if ((tts?.isLanguageAvailable(til) ?: -2) >= TextToSpeech.LANG_AVAILABLE) {
-                        tts?.language = til
-                        break
-                    }
+        // Avval o'zbek; bo'lmasa turk (lotin yozuvga eng yaqin), keyin rus, keyin standart
+        fun tilTanla() {
+            val m = tts ?: return
+            for (til in listOf(Locale("uz", "UZ"), Locale("uz"), Locale("tr", "TR"),
+                    Locale("tr"), Locale("ru"), Locale.getDefault())) {
+                if (m.isLanguageAvailable(til) >= TextToSpeech.LANG_AVAILABLE) {
+                    m.language = til
+                    break
                 }
             }
         }
+        // Google TTS'da o'zbek ovozi bor — avval uni sinaymiz, bo'lmasa standartga o'tamiz
+        tts = TextToSpeech(this, { holat ->
+            if (holat == TextToSpeech.SUCCESS) tilTanla()
+            else {
+                tts?.shutdown()
+                tts = TextToSpeech(this) { h -> if (h == TextToSpeech.SUCCESS) tilTanla() }
+            }
+        }, "com.google.android.tts")
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {

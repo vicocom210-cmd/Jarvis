@@ -160,8 +160,8 @@
 <div id="sozlama" class="parda yashir" onclick="if(event.target===this)sozlamaYop()">
   <div class="list">
     <h3>Sozlamalar</h3>
-    <label>Kompyuter IP manzili (Jarvis konsolida ko'rsatiladi)</label>
-    <input id="ip" placeholder="192.168.1.5">
+    <label>Kompyuter IP manzili — faqat raqamlar (Jarvis konsolida ko'rsatiladi)</label>
+    <input id="ip" placeholder="192.168.1.5" inputmode="decimal">
     <label>PIN kod</label>
     <input id="pin" placeholder="0000" inputmode="numeric">
     <label>Groq API kaliti (bepul — telefon o'zi javob berishi uchun)</label>
@@ -227,11 +227,21 @@ function yubor(){
   if(rejim==='kompyuter') kompyuterGa(t); else suhbatJavob(t);
 }
 
+function bazaUrl(){
+  // Foydalanuvchi xato kiritsa ham to'g'rilaymiz (https://, port, / larni tozalaymiz)
+  let s=(S.ip||'').trim().replace(/\/+$/,'');
+  const host=s.replace(/^https?:\/\//i,'').split('/')[0].split(':')[0];
+  // Uy Wi-Fi manzili (192.168., 10., 172.x) -> har doim http va 8770-port
+  if(/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return 'http://'+host+':8770';
+  if(/^\d+\.\d+\.\d+\.\d+$/.test(host)) return 'http://'+host+':8770';
+  if(/^https?:\/\//i.test(s)) return s;          // internet manzili (tunnel)
+  return 'https://'+host;                          // domen (tunnel)
+}
 function kompyuterGa(t){
   pufak('men', t);
   setHolat('oylash'); holatYoz('Kompyuterga yuboryapman...', true);
   if(!S.ip){ javobBer('Avval ⚙ sozlamalarda kompyuter IP manzilini kiriting.'); return; }
-  fetch('http://'+S.ip+':8770/buyruq',{method:'POST',headers:{'Content-Type':'application/json'},
+  fetch(bazaUrl()+'/buyruq',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({pin:S.pin,matn:t})})
     .then(r=>r.json()).then(d=>javobBer(d.ok?(d.javob||'Bajarildi.'):('Xato: '+(d.xato||''))))
     .catch(()=>javobBer('Kompyuterga ulanolmadim. Bir Wi-Fi\'da ekaningizni tekshiring.'));
