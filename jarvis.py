@@ -36,6 +36,8 @@ import bilim
 import boshqaruv
 import kompyuter
 import sozlamalar
+import suhbat
+import sun_iy
 import telegram_bot
 from tarjima import tarjima
 
@@ -850,22 +852,19 @@ def chaqiruvni_ajrat(gap):
 
 # ---------- 4. AI (ixtiyoriy) ----------
 def ai_javob(savol):
-    """Faqat suhbat uchun. AI kompyuterda hech narsa bajarmaydi."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return ("Tushunmadim, boshqacha so'zlar bilan aytib ko'ring. "
-                "Yordam desangiz, qanday buyruqlarni bilishimni aytaman.")
-    try:
-        import anthropic
-        javob = anthropic.Anthropic().messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-            system="Sen Jarvis ismli yordamchisan. Faqat o'zbek tilida (lotin yozuvida), "
-                   "qisqa, 1-3 gapda javob ber.",
-            messages=[{"role": "user", "content": savol}],
-        )
-        return javob.content[0].text
-    except Exception:
-        return "AI bilan bog'lana olmadim."
+    """Suhbat uchun. AI kompyuterda hech narsa bajarmaydi.
+    1) API'siz tayyor suhbat javobi;  2) bepul/pullik AI (kalit bo'lsa);
+    3) hech biri bo'lmasa — muloyim taklif."""
+    tayyor = suhbat.javob(savol, ISM)
+    if tayyor and not sun_iy.bormi():
+        return tayyor                            # kalit yo'q — offline javob
+    aqlli = sun_iy.javob(savol, ISM, til())      # kalit bor bo'lsa — chinakam AI
+    if aqlli:
+        return aqlli
+    if tayyor:
+        return tayyor
+    return ("Buni aniq bilmayman. Bepul sun'iy intellektga ulasangiz, har qanday savolga "
+            "javob beraman. Yordam desangiz, qanday buyruqlarni bilishimni aytaman.")
 
 
 # ---------- 5. DASTURLAR ----------
