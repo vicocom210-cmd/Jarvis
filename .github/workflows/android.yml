@@ -1,6 +1,6 @@
 name: Jarvis telefon APK
 
-# APK'ni GitHub o'zi yasaydi. Ishga tushirish: GitHub sahifasida Actions > "Jarvis telefon APK" > Run workflow.
+# APK'ni GitHub o'zi yasaydi. Ishga tushirish: Actions > "Jarvis telefon APK" > Run workflow.
 # Yoki telefon_ilova/ ichida biror narsa o'zgarsa, avtomatik ishlaydi.
 on:
   push:
@@ -22,8 +22,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Android SDK o'rnatish
-        uses: android-actions/setup-android@v3
+      # Android SDK ubuntu-latest runnerida allaqachon o'rnatilgan (ANDROID_SDK_ROOT).
+      # Kerakli platforma va build-tools'ni tayyorlaymiz.
+      - name: Android SDK komponentlari
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0" >/dev/null
 
       - name: Gradle tayyorlash
         uses: gradle/actions/setup-gradle@v4

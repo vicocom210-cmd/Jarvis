@@ -5,233 +5,288 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Jarvis</title>
 <style>
-  :root { --yorqin:#46cdff; --xira:#1e5ad2; --fon:#050912; --panel:#0e1626; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; height:100%; background:var(--fon); color:#e8eef7;
-    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; user-select:none; }
-  #shar { display:block; margin:0 auto; }
-  #holat { text-align:center; color:var(--yorqin); font-size:14px; margin-top:4px; min-height:18px; }
-  #suhbat { text-align:center; padding:6px 18px; min-height:60px; }
-  #siz { color:#aebdd6; font-size:15px; }
-  #javob { color:var(--yorqin); font-size:16px; margin-top:4px; line-height:1.35; }
-  .tablar { display:flex; gap:8px; padding:0 14px; }
-  .tab { flex:1; text-align:center; padding:10px; border-radius:12px; background:var(--panel);
-    color:#9fb2d0; font-size:14px; border:1px solid #22344f; }
-  .tab.faol { color:#fff; border-color:var(--yorqin); background:#132135; }
-  #kirish { display:flex; gap:8px; padding:12px 14px; }
-  #matn { flex:1; padding:14px 16px; border-radius:26px; border:1px solid #2a3d5c;
-    background:#131b2b; color:#eaf1fb; font-size:16px; outline:none; }
-  .yumaloq { width:52px; height:52px; border-radius:50%; border:none; font-size:22px;
-    background:var(--yorqin); color:#08111f; display:flex; align-items:center; justify-content:center; }
-  .yumaloq:active { transform:scale(0.92); }
-  #menyu { padding:4px 14px 14px; overflow-y:auto; }
-  .karta { background:var(--panel); border:1px solid #22344f; border-radius:14px; padding:14px;
-    margin-bottom:10px; font-size:15px; display:flex; align-items:center; gap:12px; }
-  .karta:active { background:#152238; }
-  .karta .belgi { font-size:22px; }
-  .sozlama { padding:14px; }
-  .sozlama label { display:block; color:#9fb2d0; font-size:13px; margin:10px 0 4px; }
-  .sozlama input { width:100%; padding:12px; border-radius:10px; border:1px solid #2a3d5c;
-    background:#131b2b; color:#eaf1fb; font-size:15px; }
-  .tugma { width:100%; padding:14px; border-radius:12px; border:none; background:var(--yorqin);
-    color:#08111f; font-size:16px; font-weight:bold; margin-top:14px; }
-  .gear { position:absolute; top:10px; right:14px; font-size:22px; color:#8aa0c0; }
-  .yashir { display:none !important; }
+  :root{
+    --yorqin:#4bd0ff; --xira:#1e5ad2; --binafsha:#8a6bff;
+    --fon1:#060b18; --fon2:#0a1226; --panel:rgba(20,30,52,.55); --chegara:rgba(90,140,220,.22);
+    --matn:#eaf1fb; --sust:#9fb2d0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0;}
+  html,body{height:100%; overflow:hidden; font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:var(--matn); user-select:none;}
+  /* jonli aurora fon */
+  body{position:relative; background:var(--fon1);}
+  .aura{position:fixed; inset:-30%; z-index:0; filter:blur(70px); opacity:.55;
+    background:
+      radial-gradient(40% 40% at 25% 30%, var(--xira), transparent 70%),
+      radial-gradient(35% 35% at 80% 20%, var(--binafsha), transparent 70%),
+      radial-gradient(45% 45% at 60% 85%, var(--yorqin), transparent 70%);
+    animation:suz 18s ease-in-out infinite alternate;}
+  @keyframes suz{ 0%{transform:translate(0,0) scale(1)} 50%{transform:translate(4%,-3%) scale(1.1)}
+    100%{transform:translate(-4%,3%) scale(1.05)} }
+  .qatlam{position:relative; z-index:1; height:100%; display:flex; flex-direction:column;}
+
+  header{display:flex; align-items:center; justify-content:space-between; padding:14px 18px 4px;}
+  .logo{font-weight:800; letter-spacing:3px; font-size:18px;
+    background:linear-gradient(90deg,var(--yorqin),var(--binafsha)); -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;}
+  .gear{width:40px;height:40px;border-radius:50%; background:var(--panel);
+    border:1px solid var(--chegara); display:flex;align-items:center;justify-content:center;
+    font-size:19px; color:#a9bcda; backdrop-filter:blur(8px);}
+  .gear:active{transform:rotate(45deg); transition:.2s;}
+
+  #shar{display:block; margin:6px auto 0;}
+  #holat{text-align:center; font-size:13px; color:var(--yorqin); letter-spacing:.5px;
+    height:18px; opacity:.9;}
+  #holat.jonli::after{content:''; display:inline-block; width:6px;height:6px;border-radius:50%;
+    background:var(--yorqin); margin-left:7px; box-shadow:0 0 8px var(--yorqin);
+    animation:lip 1s infinite;}
+  @keyframes lip{50%{opacity:.2}}
+
+  /* suhbat pufakchalari */
+  #oqim{flex:1; overflow-y:auto; padding:10px 16px 4px; display:flex; flex-direction:column; gap:8px;}
+  .pufak{max-width:82%; padding:11px 15px; border-radius:18px; font-size:15px; line-height:1.4;
+    animation:kirish .28s ease; word-wrap:break-word;}
+  @keyframes kirish{from{opacity:0; transform:translateY(8px)}}
+  .men{align-self:flex-end; background:linear-gradient(135deg,var(--xira),var(--binafsha));
+    color:#fff; border-bottom-right-radius:6px;}
+  .jarvis{align-self:flex-start; background:var(--panel); border:1px solid var(--chegara);
+    border-bottom-left-radius:6px; backdrop-filter:blur(8px);}
+
+  /* stikerlar */
+  .stikerlar{display:flex; gap:8px; overflow-x:auto; padding:6px 16px; scrollbar-width:none;}
+  .stikerlar::-webkit-scrollbar{display:none;}
+  .stiker{flex:0 0 auto; font-size:22px; width:44px;height:44px; border-radius:14px;
+    background:var(--panel); border:1px solid var(--chegara); display:flex;
+    align-items:center;justify-content:center; backdrop-filter:blur(8px);}
+  .stiker:active{transform:scale(.85); background:#1a2740;}
+
+  /* kompyuter menyusi */
+  #menyu{padding:4px 16px; overflow-y:auto;}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .plitka{background:var(--panel); border:1px solid var(--chegara); border-radius:18px;
+    padding:16px 12px; text-align:center; backdrop-filter:blur(10px); position:relative; overflow:hidden;}
+  .plitka:active{transform:scale(.95); border-color:var(--yorqin);}
+  .plitka .em{font-size:26px; display:block; margin-bottom:6px;}
+  .plitka .nm{font-size:13px; color:var(--sust);}
+
+  /* pastki panel */
+  .past{padding:10px 16px calc(14px + env(safe-area-inset-bottom));}
+  .kirish{display:flex; gap:10px; align-items:center;}
+  #matn{flex:1; padding:14px 18px; border-radius:26px; border:1px solid var(--chegara);
+    background:rgba(15,22,38,.7); color:var(--matn); font-size:16px; outline:none; backdrop-filter:blur(8px);}
+  .mik{width:54px;height:54px;border-radius:50%; border:none; flex:0 0 auto; font-size:22px; color:#08111f;
+    background:linear-gradient(135deg,var(--yorqin),var(--binafsha)); position:relative;
+    box-shadow:0 6px 20px rgba(75,208,255,.35);}
+  .mik:active{transform:scale(.9);}
+  .mik.tinglayapti::before, .mik.tinglayapti::after{content:''; position:absolute; inset:0;
+    border-radius:50%; border:2px solid var(--yorqin); animation:tolqin 1.4s infinite;}
+  .mik.tinglayapti::after{animation-delay:.7s;}
+  @keyframes tolqin{from{transform:scale(1);opacity:.7} to{transform:scale(2);opacity:0}}
+
+  /* pastki tablar */
+  .tablar{display:flex; gap:8px; margin-top:10px; background:rgba(12,18,32,.6);
+    border:1px solid var(--chegara); border-radius:20px; padding:5px; backdrop-filter:blur(10px);}
+  .tab{flex:1; text-align:center; padding:11px; border-radius:15px; font-size:14px; color:var(--sust);
+    transition:.2s;}
+  .tab.faol{color:#fff; background:linear-gradient(135deg,var(--xira),var(--binafsha));
+    box-shadow:0 4px 14px rgba(90,110,255,.4);}
+
+  /* sozlama oynasi */
+  .parda{position:fixed; inset:0; z-index:5; background:rgba(4,8,18,.7); backdrop-filter:blur(6px);
+    display:flex; align-items:flex-end;}
+  .list{width:100%; background:var(--fon2); border-radius:24px 24px 0 0; padding:20px 18px 30px;
+    border-top:1px solid var(--chegara); animation:kotaril .3s ease;}
+  @keyframes kotaril{from{transform:translateY(100%)}}
+  .list h3{font-size:18px; margin-bottom:6px;}
+  .list label{display:block; color:var(--sust); font-size:13px; margin:14px 0 5px;}
+  .list input{width:100%; padding:13px 15px; border-radius:13px; border:1px solid var(--chegara);
+    background:#0e1626; color:var(--matn); font-size:15px; outline:none;}
+  .knop{width:100%; padding:15px; border-radius:14px; border:none; font-size:16px; font-weight:700;
+    margin-top:16px; color:#08111f; background:linear-gradient(135deg,var(--yorqin),var(--binafsha));}
+  .yashir{display:none !important;}
 </style>
 </head>
 <body>
-  <div class="gear" onclick="sozlamaOch()">⚙</div>
-  <canvas id="shar" width="300" height="300"></canvas>
-  <div id="holat">Kutish rejimi</div>
-  <div id="suhbat"><div id="siz"></div><div id="javob">Salom! Men Jarvisman.</div></div>
+<div class="aura"></div>
+<div class="qatlam">
+  <header>
+    <div class="logo">J A R V I S</div>
+    <div class="gear" onclick="sozlamaOch()">⚙</div>
+  </header>
 
-  <div class="tablar">
-    <div class="tab faol" id="tab-suhbat" onclick="tabTanla('suhbat')">💬 Suhbat</div>
-    <div class="tab" id="tab-kompyuter" onclick="tabTanla('kompyuter')">💻 Kompyuter</div>
-  </div>
+  <canvas id="shar" width="260" height="230"></canvas>
+  <div id="holat">Salom, xush kelibsiz</div>
 
+  <!-- Suhbat oqimi -->
+  <div id="oqim"></div>
+
+  <!-- Kompyuter menyusi -->
   <div id="menyu" class="yashir">
-    <div class="karta" onclick="kompyuterGa('youtubeni och')"><span class="belgi">▶️</span> YouTube ochish</div>
-    <div class="karta" onclick="kompyuterGa('musiqa qo\'y')"><span class="belgi">🎵</span> Musiqa qo'yish</div>
-    <div class="karta" onclick="kompyuterGa('ekran rasmini yubor')"><span class="belgi">🖥️</span> Ekran rasmini olish</div>
-    <div class="karta" onclick="kompyuterGa('kameradan surat ol')"><span class="belgi">📷</span> Kameradan surat</div>
-    <div class="karta" onclick="kompyuterGa('kompyuterni qulfla')"><span class="belgi">🔒</span> Kompyuterni qulflash</div>
-    <div class="karta" onclick="kompyuterGa('ovozni oshir')"><span class="belgi">🔊</span> Ovozni oshirish</div>
-    <div class="karta" onclick="kompyuterGa('yuklamalardagi rasmlarni tashla')"><span class="belgi">🖼️</span> Rasmlarni yuborish</div>
-    <div class="karta" onclick="kompyuterGa('soat necha')"><span class="belgi">🕐</span> Soatni so'rash</div>
+    <div class="grid">
+      <div class="plitka" onclick="kompyuterGa('youtubeni och')"><span class="em">▶️</span><span class="nm">YouTube</span></div>
+      <div class="plitka" onclick="kompyuterGa('musiqa qo\'y')"><span class="em">🎵</span><span class="nm">Musiqa</span></div>
+      <div class="plitka" onclick="kompyuterGa('ekran rasmini yubor')"><span class="em">🖥️</span><span class="nm">Ekran rasmi</span></div>
+      <div class="plitka" onclick="kompyuterGa('kameradan surat ol')"><span class="em">📷</span><span class="nm">Kamera</span></div>
+      <div class="plitka" onclick="kompyuterGa('yuklamalardagi rasmlarni tashla')"><span class="em">🖼️</span><span class="nm">Rasmlar</span></div>
+      <div class="plitka" onclick="kompyuterGa('kompyuterni qulfla')"><span class="em">🔒</span><span class="nm">Qulflash</span></div>
+      <div class="plitka" onclick="kompyuterGa('ovozni oshir')"><span class="em">🔊</span><span class="nm">Ovoz +</span></div>
+      <div class="plitka" onclick="kompyuterGa('soat necha')"><span class="em">🕐</span><span class="nm">Soat</span></div>
+    </div>
   </div>
 
-  <div id="sozlama" class="sozlama yashir">
-    <label>Kompyuter IP manzili (Jarvis ekranida ko'rsatiladi)</label>
-    <input id="ip" placeholder="masalan: 192.168.1.5">
+  <div class="past">
+    <div class="stikerlar" id="stikerlar">
+      <div class="stiker" onclick="stikerYubor('Salom!')">👋</div>
+      <div class="stiker" onclick="stikerYubor('Rahmat!')">🙏</div>
+      <div class="stiker" onclick="stikerYubor('Menga hazil ayt')">😂</div>
+      <div class="stiker" onclick="stikerYubor('Kayfiyatim yaxshi')">😎</div>
+      <div class="stiker" onclick="stikerYubor('Charchadim')">😴</div>
+      <div class="stiker" onclick="stikerYubor('Zo\'rsan!')">🔥</div>
+      <div class="stiker" onclick="stikerYubor('Menga maslahat ber')">💡</div>
+      <div class="stiker" onclick="stikerYubor('Sevgi haqida gapir')">❤️</div>
+    </div>
+    <div class="kirish">
+      <input id="matn" placeholder="Savol yoki gap yozing..." onkeydown="if(event.key==='Enter')yubor()">
+      <button class="mik" id="mik" onclick="mikrofon()">🎤</button>
+    </div>
+    <div class="tablar">
+      <div class="tab faol" id="tab-suhbat" onclick="tabTanla('suhbat')">💬 Suhbat</div>
+      <div class="tab" id="tab-kompyuter" onclick="tabTanla('kompyuter')">💻 Kompyuter</div>
+    </div>
+  </div>
+</div>
+
+<!-- Sozlamalar -->
+<div id="sozlama" class="parda yashir" onclick="if(event.target===this)sozlamaYop()">
+  <div class="list">
+    <h3>Sozlamalar</h3>
+    <label>Kompyuter IP manzili (Jarvis konsolida ko'rsatiladi)</label>
+    <input id="ip" placeholder="192.168.1.5">
     <label>PIN kod</label>
     <input id="pin" placeholder="0000" inputmode="numeric">
-    <label>Groq API kaliti (ixtiyoriy — telefon o'zi javob berishi uchun)</label>
+    <label>Groq API kaliti (bepul — telefon o'zi javob berishi uchun)</label>
     <input id="groq" placeholder="gsk_...">
-    <button class="tugma" onclick="sozlamaSaqla()">Saqlash</button>
-    <button class="tugma" style="background:#22344f;color:#cfe0f5" onclick="sozlamaYop()">Yopish</button>
+    <button class="knop" onclick="sozlamaSaqla()">Saqlash</button>
   </div>
-
-  <div id="kirish">
-    <input id="matn" placeholder="Buyruq yozing..." onkeydown="if(event.key==='Enter')yubor()">
-    <button class="yumaloq" onclick="mikrofon()">🎤</button>
-  </div>
+</div>
 
 <script>
-// ---------- sozlamalar (telefonda saqlanadi) ----------
 const S = {
-  ip: localStorage.getItem('ip') || '',
-  pin: localStorage.getItem('pin') || '0000',
-  groq: localStorage.getItem('groq') || '',
+  ip: localStorage.getItem('ip')||'', pin: localStorage.getItem('pin')||'0000',
+  groq: localStorage.getItem('groq')||'',
 };
-let rejim = 'suhbat';          // 'suhbat' (telefon AI) yoki 'kompyuter'
-let tarix = [];                // AI suhbat xotirasi
+let rejim='suhbat', tarix=[];
 
-function tabTanla(t) {
-  rejim = t;
-  document.getElementById('tab-suhbat').classList.toggle('faol', t==='suhbat');
-  document.getElementById('tab-kompyuter').classList.toggle('faol', t==='kompyuter');
+function tabTanla(t){
+  rejim=t;
+  tab_suhbat.classList.toggle('faol', t==='suhbat');
+  tab_kompyuter.classList.toggle('faol', t==='kompyuter');
   document.getElementById('menyu').classList.toggle('yashir', t!=='kompyuter');
-  document.getElementById('matn').placeholder = t==='kompyuter'
-    ? "Kompyuterga buyruq..." : "Savol yoki gap yozing...";
+  document.getElementById('oqim').classList.toggle('yashir', t==='kompyuter');
+  document.getElementById('stikerlar').classList.toggle('yashir', t==='kompyuter');
+  matn.placeholder = t==='kompyuter' ? "Kompyuterga buyruq..." : "Savol yoki gap yozing...";
 }
-function sozlamaOch() {
-  document.getElementById('ip').value = S.ip;
-  document.getElementById('pin').value = S.pin;
-  document.getElementById('groq').value = S.groq;
-  document.getElementById('sozlama').classList.remove('yashir');
-}
+const tab_suhbat=document.getElementById('tab-suhbat'), tab_kompyuter=document.getElementById('tab-kompyuter');
+const matn=document.getElementById('matn'), oqim=document.getElementById('oqim');
+
+function sozlamaOch(){ ip.value=S.ip; pin.value=S.pin; groq.value=S.groq;
+  document.getElementById('sozlama').classList.remove('yashir'); }
 function sozlamaYop(){ document.getElementById('sozlama').classList.add('yashir'); }
-function sozlamaSaqla() {
-  S.ip = document.getElementById('ip').value.trim();
-  S.pin = document.getElementById('pin').value.trim() || '0000';
-  S.groq = document.getElementById('groq').value.trim();
-  localStorage.setItem('ip', S.ip);
-  localStorage.setItem('pin', S.pin);
-  localStorage.setItem('groq', S.groq);
-  sozlamaYop();
-  korsat('', 'Sozlamalar saqlandi.');
+function sozlamaSaqla(){
+  S.ip=ip.value.trim(); S.pin=pin.value.trim()||'0000'; S.groq=groq.value.trim();
+  localStorage.setItem('ip',S.ip); localStorage.setItem('pin',S.pin); localStorage.setItem('groq',S.groq);
+  sozlamaYop(); pufak('jarvis','Sozlamalar saqlandi ✅');
+}
+const ip=document.getElementById('ip'), pin=document.getElementById('pin'), groq=document.getElementById('groq');
+
+function pufak(kim, txt){
+  const d=document.createElement('div');
+  d.className='pufak '+(kim==='men'?'men':'jarvis');
+  d.textContent=txt; oqim.appendChild(d);
+  oqim.scrollTop=oqim.scrollHeight;
+  return d;
 }
 
-// ---------- ko'rinish ----------
-function korsat(siz, javob) {
-  if (siz !== null) document.getElementById('siz').textContent = siz || '';
-  if (javob !== undefined) document.getElementById('javob').textContent = javob || '';
-}
-function holatYoz(t){ document.getElementById('holat').textContent = t; }
+function holatYoz(t, jonli){ const h=document.getElementById('holat');
+  h.textContent=t; h.classList.toggle('jonli', !!jonli); }
 
-// ---------- ovoz ----------
-function gapir(matn) {
-  try { Android.gapir(matn); } catch(e) {}
-}
-function mikrofon() {
-  holatYoz('Tinglayapman...');
-  setHolat('tinglash');
-  try { Android.tingla(); } catch(e){ korsat(null,'Mikrofon ishlamadi.'); }
-}
-// Kotlin shu funksiyalarni chaqiradi:
-window.tinglashBoshlandi = function(){ holatYoz('Tinglayapman...'); setHolat('tinglash'); };
-window.tinglashTugadi = function(){ holatYoz('Kutish rejimi'); setHolat('kutish'); };
-window.natija = function(matn) {
-  document.getElementById('matn').value = matn;
-  yubor();
-};
+// ovoz
+function gapir(t){ try{Android.gapir(t);}catch(e){} }
+function mikrofon(){ document.getElementById('mik').classList.add('tinglayapti');
+  holatYoz('Tinglayapman...', true); setHolat('tinglash'); try{Android.tingla();}catch(e){} }
+window.tinglashBoshlandi=()=>{ document.getElementById('mik').classList.add('tinglayapti');
+  holatYoz('Tinglayapman...', true); setHolat('tinglash'); };
+window.tinglashTugadi=()=>{ document.getElementById('mik').classList.remove('tinglayapti');
+  holatYoz('Kutish rejimi'); setHolat('kutish'); };
+window.natija=(t)=>{ document.getElementById('mik').classList.remove('tinglayapti'); matn.value=t; yubor(); };
 
-// ---------- buyruq yuborish ----------
-function yubor() {
-  const el = document.getElementById('matn');
-  const matn = el.value.trim();
-  if (!matn) return;
-  el.value = '';
-  korsat(matn, '...');
-  if (rejim === 'kompyuter') kompyuterGa(matn);
-  else suhbatJavob(matn);
+function stikerYubor(t){ matn.value=t; rejim='suhbat'; tabTanla('suhbat'); yubor(); }
+
+function yubor(){
+  const t=matn.value.trim(); if(!t) return; matn.value='';
+  if(rejim==='kompyuter') kompyuterGa(t); else suhbatJavob(t);
 }
 
-function kompyuterGa(matn) {
-  korsat(matn, 'Kompyuterga yuboryapman...');
-  setHolat('oylash');
-  if (!S.ip) { javobBer('Avval ⚙ sozlamalarda kompyuter IP manzilini kiriting.'); return; }
-  fetch('http://' + S.ip + ':8770/buyruq', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({pin:S.pin, matn:matn})
-  }).then(r=>r.json()).then(d=>{
-    javobBer(d.ok ? (d.javob||'Bajarildi.') : ('Xato: '+(d.xato||'')));
-  }).catch(e=>{
-    javobBer('Kompyuterga ulanolmadim. Bir Wi-Fi\'da ekaningizni va IP\'ni tekshiring.');
-  });
+function kompyuterGa(t){
+  pufak('men', t);
+  setHolat('oylash'); holatYoz('Kompyuterga yuboryapman...', true);
+  if(!S.ip){ javobBer('Avval ⚙ sozlamalarda kompyuter IP manzilini kiriting.'); return; }
+  fetch('http://'+S.ip+':8770/buyruq',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({pin:S.pin,matn:t})})
+    .then(r=>r.json()).then(d=>javobBer(d.ok?(d.javob||'Bajarildi.'):('Xato: '+(d.xato||''))))
+    .catch(()=>javobBer('Kompyuterga ulanolmadim. Bir Wi-Fi\'da ekaningizni tekshiring.'));
 }
 
-// ---------- telefon AI (Groq) ----------
-function suhbatJavob(matn) {
-  setHolat('oylash'); holatYoz('O\'ylayapman...');
-  if (!S.groq) {
-    javobBer('Men bilan suhbatlashish uchun ⚙ sozlamalarda bepul Groq kalitini kiriting. '
-      + 'Yoki 💻 Kompyuter bo\'limidan kompyuterni boshqaring.');
-    return;
-  }
-  const xabarlar = [{role:'system', content:
-    'Sen Jarvis ismli o\'zbek ovozli yordamchisan. Doim o\'zbek tilida, samimiy, qisqa (1-3 gap) javob ber.'}];
-  tarix.slice(-6).forEach(m=>xabarlar.push(m));
-  xabarlar.push({role:'user', content:matn});
-  fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method:'POST',
+function suhbatJavob(t){
+  pufak('men', t);
+  setHolat('oylash'); holatYoz('O\'ylayapman...', true);
+  if(!S.groq){ javobBer('Suhbat uchun ⚙ sozlamalarda bepul Groq kalitini kiriting, yoki 💻 Kompyuter bo\'limidan foydalaning.'); return; }
+  const xs=[{role:'system',content:'Sen Jarvis ismli o\'zbek ovozli yordamchisan. Doim o\'zbek tilida, samimiy, qisqa (1-3 gap) javob ber.'}];
+  tarix.slice(-6).forEach(m=>xs.push(m)); xs.push({role:'user',content:t});
+  const kutmoqda=pufak('jarvis','...');
+  fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.groq},
-    body: JSON.stringify({model:'llama-3.3-70b-versatile', messages:xabarlar, max_tokens:400})
-  }).then(r=>r.json()).then(d=>{
-    const j = d.choices && d.choices[0] && d.choices[0].message.content;
-    if (j) { tarix.push({role:'user',content:matn}); tarix.push({role:'assistant',content:j});
-      javobBer(j.trim()); }
-    else javobBer('Javob ololmadim. Kalitni tekshiring.');
-  }).catch(e=> javobBer('Internet bilan muammo bor.'));
+    body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:xs,max_tokens:400})})
+    .then(r=>r.json()).then(d=>{
+      const j=d.choices&&d.choices[0]&&d.choices[0].message.content;
+      kutmoqda.remove();
+      if(j){ tarix.push({role:'user',content:t}); tarix.push({role:'assistant',content:j.trim()});
+        javobBer(j.trim()); } else javobBer('Javob ololmadim. Kalitni tekshiring.');
+    }).catch(()=>{ kutmoqda.remove(); javobBer('Internet bilan muammo bor.'); });
 }
 
-function javobBer(matn) {
-  korsat(null, matn);
-  holatYoz('Kutish rejimi');
-  setHolat('gapirish');
-  gapir(matn);
-  setTimeout(()=>setHolat('kutish'), 1500);
-}
+function javobBer(t){ pufak('jarvis', t); holatYoz('Kutish rejimi'); setHolat('gapirish');
+  gapir(t); setTimeout(()=>setHolat('kutish'),1600); }
 
-// ---------- zarrachalardan shar (Fibonacci sfera) ----------
-const cvs = document.getElementById('shar'), ctx = cvs.getContext('2d');
-const N = 900, nuqtalar = [];
-for (let i=0;i<N;i++){
-  const y = 1 - 2*(i+0.5)/N, r = Math.sqrt(1-y*y), a = Math.PI*(3-Math.sqrt(5))*i;
-  nuqtalar.push([Math.cos(a)*r, y, Math.sin(a)*r]);
-}
-let holat = 'kutish', rang=[70,150,230], maqsadRang=[70,150,230],
-    kattalik=0.8, maqsadKat=0.8, tezlik=0.3, burchak=0;
-const HOLATLAR = {
-  kutish:{rang:[40,95,210],kat:0.8,tez:0.3},
-  tinglash:{rang:[70,205,255],kat:1.0,tez:0.9},
-  oylash:{rang:[60,150,255],kat:0.92,tez:1.5},
-  gapirish:{rang:[90,215,255],kat:0.95,tez:0.6},
-};
-function setHolat(h){ if(HOLATLAR[h]){ holat=h; maqsadRang=HOLATLAR[h].rang;
-  maqsadKat=HOLATLAR[h].kat; tezlik=HOLATLAR[h].tez; } }
-
-function chiz(vaqt){
-  ctx.clearRect(0,0,300,300);
-  for(let i=0;i<3;i++) rang[i]+=(maqsadRang[i]-rang[i])*0.08;
-  kattalik += (maqsadKat-kattalik)*0.08;
-  burchak += tezlik*0.015;
-  const cx=150, cy=150, R=95*kattalik, ca=Math.cos(burchak), sa=Math.sin(burchak),
-        ce=Math.cos(0.4), se=Math.sin(0.4);
-  const nafas = 1 + 0.03*Math.sin(vaqt*0.002);
-  for(const [x,y,z] of nuqtalar){
+// ---------- shar ----------
+const cvs=document.getElementById('shar'), ctx=cvs.getContext('2d'), W=260, H=230;
+const N=850, pts=[];
+for(let i=0;i<N;i++){ const y=1-2*(i+0.5)/N, r=Math.sqrt(1-y*y), a=Math.PI*(3-Math.sqrt(5))*i;
+  pts.push([Math.cos(a)*r,y,Math.sin(a)*r]); }
+let rng=[70,150,230], mR=[70,150,230], kat=0.82, mK=0.82, tez=0.3, bur=0;
+const HS={ kutish:{r:[40,95,210],k:0.82,t:0.3}, tinglash:{r:[75,208,255],k:1.0,t:0.9},
+  oylash:{r:[138,107,255],k:0.92,t:1.5}, gapirish:{r:[90,215,255],k:0.96,t:0.6} };
+function setHolat(h){ if(HS[h]){ mR=HS[h].r; mK=HS[h].k; tez=HS[h].t; } }
+function chiz(v){
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<3;i++) rng[i]+=(mR[i]-rng[i])*0.08;
+  kat+=(mK-kat)*0.08; bur+=tez*0.015;
+  const cx=W/2, cy=H/2, R=82*kat, ca=Math.cos(bur), sa=Math.sin(bur), ce=Math.cos(.4), se=Math.sin(.4);
+  const nafas=1+0.03*Math.sin(v*0.002);
+  // ichki nur
+  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,R*1.3);
+  g.addColorStop(0,'rgba('+(rng[0]|0)+','+(rng[1]|0)+','+(rng[2]|0)+',0.25)');
+  g.addColorStop(1,'transparent'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  for(const [x,y,z] of pts){
     const x2=x*ca+z*sa, z2=z*ca-x*sa, y2=y*ce-z2*se, z3=y*se+z2*ce;
-    const ch=(z3+1.2)/2.4, k=nafas;
-    const px=cx+x2*R*k, py=cy+y2*R*k, o=0.25+ch*0.75;
-    const s=ch<0.5?1.1:(ch<0.85?1.6:2.2);
-    ctx.fillStyle='rgba('+(rang[0]|0)+','+(rang[1]|0)+','+(rang[2]|0)+','+o+')';
+    const ch=(z3+1.2)/2.4, px=cx+x2*R*nafas, py=cy+y2*R*nafas, o=0.2+ch*0.8, s=ch<0.5?1:(ch<0.85?1.5:2.1);
+    ctx.fillStyle='rgba('+(rng[0]|0)+','+(rng[1]|0)+','+(rng[2]|0)+','+o+')';
     ctx.beginPath(); ctx.arc(px,py,s,0,6.29); ctx.fill();
   }
   requestAnimationFrame(chiz);
 }
 requestAnimationFrame(chiz);
-tabTanla('suhbat');
+pufak('jarvis','Salom! Men Jarvisman. Savol bering yoki 🎤 bosib gapiring.');
 </script>
 </body>
 </html>
