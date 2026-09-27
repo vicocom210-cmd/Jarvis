@@ -37,6 +37,7 @@ import boshqaruv
 import kompyuter
 import sozlamalar
 import suhbat
+import server
 import sun_iy
 import telefon
 import telegram_bot
@@ -94,6 +95,10 @@ def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False):
         matn = tarjima(matn, "uz", til())
     print(f"Jarvis: {matn}")
     ui_navbat.put(("jarvis", matn))
+    yiguvchi = getattr(web_holati, "yig", None)
+    if yiguvchi is not None:        # buyruq telefon ilovasidan keldi — javobni to'playmiz
+        yiguvchi.append(matn)
+        return
     if javob_telegramga:
         if bot:
             bot.yoz(matn)           # buyruq telefondan keldi — javob ham telefonga
@@ -317,6 +322,8 @@ def sozlama_ozgartir(kalit, qiymat, ayt=True):
 # ---------- 2.2. TELEGRAM BOT (telefondan boshqarish) ----------
 oxirgi_manba = ""                 # hozirgi buyruq qayerdan keldi: ovoz, yozuv, telegram, uzish
 bot = None                        # ishlab turgan Telegram bot
+web_holati = threading.local()    # telefon ilovasidan kelgan buyruq javobini to'plash uchun
+web_qulfi = threading.Lock()      # bir vaqtda bitta web buyruq bajariladi
 javob_telegramga = False          # hozirgi buyruq telefondan keldimi (javob ham o'sha yoqqa)
 
 
@@ -859,6 +866,28 @@ def _telefon_rasmlarini_kochir():
         gapir("Rasmlarni ko'chira olmadim. Telefonda ruxsatlarni tekshiring.")
 
 
+# ---------- TELEFON ILOVASI SERVERI ----------
+def web_tasdiqla_ogohlantir():
+    """Web (telefon ilovasi) rejimida xavfli buyruq tasdiqlanmaydi — xavfsizlik uchun."""
+    return False
+
+
+def web_bajar(matn):
+    """Telefon ilovasidan kelgan buyruqni bajaradi va Jarvis javobini matn qilib qaytaradi."""
+    global oxirgi_manba
+    with web_qulfi:
+        web_holati.yig = []
+        oxirgi_manba = "web"
+        try:
+            bajar(ichki_tilga(normallashtir(matn)))
+        except Exception as xato:
+            print(f"(Web buyruq xatosi: {xato})")
+            web_holati.yig.append("Buyruqni bajarishda xato bo'ldi.")
+        javob = " ".join(web_holati.yig)
+        web_holati.yig = None
+    return javob or "Bajarildi."
+
+
 def kamera_rasmi():
     """Veb-kameradan surat olib, egasiga (Telegram yoki ish stoli) beradi.
     Egasi kompyuterida kim borligini ko'rishi uchun."""
@@ -969,6 +998,9 @@ def bor(gap, *sozlar):
 
 def tasdiqla(savol):
     """Xavfli ishdan oldin so'raydi. Faqat "ha" desangiz True qaytaradi."""
+    if getattr(web_holati, "yig", None) is not None:   # telefon ilovasidan — tasdiqsiz rad etamiz
+        gapir(savol + " Buni xavfsizlik uchun faqat kompyuterdan tasdiqlash mumkin.")
+        return False
     gapir(savol + " Ha yoki yo'q deng.")
     javob = eshit().split()
     return any(s.strip(".,!") in ("ha", "xa", "ha'", "albatta", "roziman", "да", "yes", "ja")
@@ -1683,6 +1715,9 @@ def miya():
     global media_boshlandi, javob_telegramga, oxirgi_manba
     ui_navbat.put(("sozlamalar", dict(SOZ)))
     telegram_ishga_tushir()
+    pin = str(SOZ.get("telefon_pin") or "0000")
+    if server.ishga_tushir(web_bajar, pin):
+        print(f"📱 Telefon ilovasi uchun manzil: http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
