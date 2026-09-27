@@ -167,3 +167,12 @@ def wifi_ulan(ip_port):
     """Wi-Fi orqali ulanadi (masalan '192.168.1.5:5555'). (muvaffaqiyat, xabar)."""
     kod, chiqish = adb("connect", ip_port, timeout=20)
     return kod == 0 and "connected" in chiqish.lower(), chiqish
+
+
+def juftla(adres, kod):
+    """Android 11+ 'Wireless debugging' juftlash (kabelsiz). (muvaffaqiyat, xabar).
+    adres — telefondagi 'Pair device with pairing code' ekranidagi IP:port,
+    kod — o'sha ekrandagi 6 xonali kod."""
+    natija = adb("pair", adres, kod, timeout=25)
+    chiqish = natija[1]
+    return "successfully" in chiqish.lower() or "paired" in chiqish.lower(), chiqish

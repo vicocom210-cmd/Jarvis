@@ -743,13 +743,50 @@ def telefon_holati_ayt(holat):
 
 def telefon_amal(b):
     """Telefon buyrug'ini bajaradi. Bajarilsa True qaytaradi."""
+    # Wi-Fi juftlash/ulanish — telefon ulanmagan bo'lsa ham ishlashi kerak (eng birinchi)
+    adreslar = re.findall(r"\d{1,3}(?:\.\d{1,3}){3}[:\s]+\d{2,5}", b.replace(" : ", ":"))
+    adreslar = [a.replace(" ", ":") for a in adreslar]
+    kod6 = re.search(r"\b\d{6}\b", b)
+    if bor(b, "juftla", "pair", "juft qil") and adreslar and kod6:
+        gapir("Telefonni juftlayapman.")
+        ok, chiqish = telefon.juftla(adreslar[0], kod6.group())
+        gapir("Juftlandi. Endi 'telefonga ulan' deb ulanish manzilini ayting." if ok
+              else "Juftlab bo'lmadi. Kod va manzilni tekshiring.")
+        return True
+    if bor(b, "ulan", "connect", "bog'lan") and adreslar:
+        gapir("Telefonga simsiz ulanyapman.")
+        ok, chiqish = telefon.wifi_ulan(adreslar[0])
+        if ok:
+            sozlama_ozgartir("telefon_adres", adreslar[0], ayt=False)
+            gapir("Telefonga ulandim.")
+        else:
+            gapir("Ulana olmadim. Kompyuter va telefon bir Wi-Fi'da ekanini tekshiring.")
+        return True
+    if bor(b, "ulan", "connect") and bor(b, "wifi", "wi-fi", "vayfay", "simsiz") \
+            and SOZ.get("telefon_adres"):
+        gapir("Oldingi manzilga ulanyapman.")
+        ok, _ = telefon.wifi_ulan(SOZ["telefon_adres"])
+        gapir("Telefonga ulandim." if ok else "Ulana olmadim.")
+        return True
+
+    if bor(b, "ulan", "connect", "juftla") and bor(b, "wifi", "wi-fi", "vayfay", "simsiz") \
+            and not SOZ.get("telefon_adres"):
+        gapir("Simsiz ulash uchun telefonda Dasturchi sozlamalari > Wireless debugging'ni yoqing, "
+              "'Pair device with pairing code'ni oching, keyin chiqqan manzil va 6 xonali kodni "
+              "menga ayting yoki yozing.")
+        return True
+
     ulangan, holat = telefon.ulanganmi()
+    if not ulangan:
+        if SOZ.get("telefon_adres"):             # avval simsiz ulangan — qayta urinamiz
+            telefon.wifi_ulan(SOZ["telefon_adres"])
+            ulangan, holat = telefon.ulanganmi()
     if not ulangan:
         telefon_holati_ayt(holat)
         return True
 
     if bor(b, "ulan") and bor(b, "wifi", "wi-fi", "vayfay", "simsiz"):
-        gapir("Wi-Fi ulanishni sozlash uchun telefon IP manzili kerak. Buni tushuntiraman.")
+        gapir("Telefon allaqachon ulangan.")
         return True
 
     if bor(b, "ekran") and bor(b, "rasm", "surat", "skrin", "screenshot", "ol", "yubor", "ko'rsat"):
