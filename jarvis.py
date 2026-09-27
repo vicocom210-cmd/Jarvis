@@ -35,6 +35,7 @@ import speech_recognition as sr
 import bilim
 import kompyuter
 import sozlamalar
+import telegram_bot
 from tarjima import tarjima
 
 # Ovoz, til, rang va ism — oynadagi ⚙ menyusidan yoki ovoz bilan o'zgartiriladi
@@ -89,6 +90,10 @@ def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False):
         matn = tarjima(matn, "uz", til())
     print(f"Jarvis: {matn}")
     ui_navbat.put(("jarvis", matn))
+    if javob_telegramga:
+        if bot:
+            bot.yoz(matn)           # buyruq telefondan keldi — javob ham telefonga
+        return                      # kompyuterda ovoz chiqarmaymiz
     if uzildi.is_set():
         return                  # gapini bo'ldingiz — javobning qolganini ovoz chiqarib aytmaydi
     with ovoz_qulfi:
@@ -245,7 +250,7 @@ def keyingi_gap(kutish):
             gapir(f"Salom, {ISM}! Men shu ovozda gapiraman.",
                   ovoz=sozlamalar.TILLAR[til()][matn])
             continue
-        if manba == "yozuv":
+        if manba in ("yozuv", "telegram"):
             matn = normallashtir(matn)
         if vaqt >= gap_tugadi or manba == "uzish":
             uzildi.clear()                      # yangi gap keldi — Jarvis yana gapira oladi
@@ -274,6 +279,8 @@ def ichki_tilga(matn):
 
 # ---------- 2.1. SOZLAMALAR ----------
 SOZLAMA_JAVOBLARI = {
+    "telegram_token": "Telegram bot ulanmoqda.",
+    "telegram_egasi": "Telegram uzildi. Qayta ulash uchun yangi kod ekranda.",
     "ovoz": "Ovozim o'zgardi. Endi shunday gapiraman.",
     "til": "Til o'zgardi. Endi shu tilda gaplashamiz.",
     "rang": "Rangim o'zgardi.",
@@ -289,6 +296,120 @@ def sozlama_ozgartir(kalit, qiymat, ayt=True):
     if ayt:
         gapir(f"Yaxshi, endi sizni {ISM} deb chaqiraman." if kalit == "ism"
               else SOZLAMA_JAVOBLARI[kalit])
+        if kalit in ("telegram_token", "telegram_egasi"):
+            telegram_ishga_tushir()             # yangi token yoki uzildi — bot qayta ulanadi
+
+
+# ---------- 2.2. TELEGRAM BOT (telefondan boshqarish) ----------
+bot = None                        # ishlab turgan Telegram bot
+javob_telegramga = False          # hozirgi buyruq telefondan keldimi (javob ham o'sha yoqqa)
+
+
+def telegram_holati(holat_, qiymat):
+    ui_navbat.put(("telegram_holat", holat_, qiymat))
+    if holat_ == "kod":
+        ui_navbat.put(("jarvis", f"Telegram juftlash kodi: {qiymat}"))
+
+
+def telegram_ishga_tushir():
+    global bot
+    if bot:
+        bot.ishlasin = False                    # eski bot to'xtaydi
+        bot = None
+    token = SOZ.get("telegram_token", "").strip()
+    if not token:
+        ui_navbat.put(("telegram_holat", "yoq", ""))
+        return
+    bot = telegram_bot.Bot(
+        token, SOZ.get("telegram_egasi", 0),
+        xabar_keldi=lambda matn: kirish_navbat.put(("telegram", matn, time.time())),
+        egasi_ozgardi=lambda egasi: sozlama_ozgartir("telegram_egasi", egasi, ayt=False),
+        holat_ozgardi=telegram_holati,
+        saqlash_papkasi=lambda: os.path.join(kompyuter.desktop_yoli(), "Telefondan"))
+    threading.Thread(target=bot.ishla, daemon=True).start()
+
+
+FAYL_TURLARI = {
+    "rasm": ({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic"},
+             ("rasm", "foto", "surat", "photo", "фото"), "Pictures"),
+    "video": ({".mp4", ".mov", ".avi", ".mkv", ".webm", ".3gp"}, ("video", "видео"), "Videos"),
+    "musiqa": ({".mp3", ".wav", ".m4a", ".ogg", ".flac"}, ("musiqa", "qo'shiq", "audio"), "Music"),
+    "hujjat": ({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt"},
+               ("hujjat", "dokument", "pdf", "word", "excel"), "Documents"),
+}
+PAPKA_SOZLARI = [(("yuklama", "yuklab ol", "zagruz", "download", "загруз"), "Downloads"),
+                 (("ish stol", "desktop", "rabochi", "рабоч"), "Desktop"),
+                 (("hujjatlar papka", "documents"), "Documents"),
+                 (("rasmlar papka", "pictures"), "Pictures"),
+                 (("videolar papka", "videos"), "Videos")]
+
+
+def papka_yoli(nom):
+    if nom == "Desktop":
+        return kompyuter.desktop_yoli()
+    return os.path.join(os.path.expanduser("~"), nom)
+
+
+def telegramga_yubor(gap):
+    """'yuklamalardagi rasmlarni tashla' -> Downloads'dagi rasmlarni Telegram'ga yuboradi."""
+    if not bot or not bot.egasi:
+        gapir("Telegram bot ulanmagan. Sozlamalarning Telefon bo'limida ulang.")
+        return
+    tur = next((t for t, (_, sozlar, _) in FAYL_TURLARI.items() if bor(gap, *sozlar)), None)
+    papka = next((papka_yoli(p) for sozlar, p in PAPKA_SOZLARI if bor(gap, *sozlar)), None)
+    if papka is None and tur is None:
+        # aniq fayl nomi: "hisobot faylini yubor"
+        nom = " ".join(s for s in fayl_nomi(gap).split()
+                       if not s.startswith(("yubor", "tashla", "jo'nat", "telegram")))
+        natijalar = [y for y in kompyuter.fayl_qidir(nom) if os.path.isfile(y)] if nom else []
+        if not natijalar:
+            gapir(f"{nom or 'Bu'} degan fayl topilmadi.")
+            return
+        fayllar, jami = natijalar[:1], 1
+    else:
+        if papka is None:
+            papka = papka_yoli(FAYL_TURLARI[tur][2])
+        kengaytmalar = FAYL_TURLARI[tur][0] if tur else None
+        try:
+            fayllar = [os.path.join(papka, f) for f in os.listdir(papka)
+                       if os.path.isfile(os.path.join(papka, f))
+                       and (not kengaytmalar or os.path.splitext(f)[1].lower() in kengaytmalar)]
+        except OSError:
+            fayllar = []
+        fayllar.sort(key=os.path.getmtime, reverse=True)       # eng yangilari birinchi
+        jami = len(fayllar)
+        fayllar = fayllar[:20]
+        if not fayllar:
+            gapir(f"{os.path.basename(papka)} papkasida mos fayl topilmadi.")
+            return
+    if jami > len(fayllar):
+        gapir(f"{jami} ta fayl topildi. Eng yangi {len(fayllar)} tasini yuboryapman.")
+    else:
+        gapir(f"{len(fayllar)} ta fayl yuboryapman.")
+    fonda(_telegramga_yubor_fonda, fayllar)
+
+
+def _telegramga_yubor_fonda(fayllar):
+    yuborildi = sum(1 for yol in fayllar if bot and bot.fayl_yubor(yol))
+    gapir(f"{yuborildi} ta fayl yuborildi." if yuborildi else "Fayllarni yuborib bo'lmadi.")
+
+
+def ekran_rasmi():
+    yol = os.path.join(tempfile.gettempdir(), "jarvis_ekran.png")
+    try:
+        pyautogui.screenshot(yol)
+    except Exception as xato:
+        print(f"(Ekran rasmi xatosi: {xato})")
+        gapir("Ekran rasmini ololmadim. Buning uchun pillow kutubxonasini o'rnating.")
+        return
+    if javob_telegramga and bot:
+        gapir("Ekran rasmini yuboryapman.")
+        fonda(bot.fayl_yubor, yol, "Ekran rasmi")
+    else:
+        manzil = os.path.join(kompyuter.desktop_yoli(),
+                              datetime.datetime.now().strftime("Ekran rasmi %Y-%m-%d %H-%M-%S.png"))
+        shutil.copy(yol, manzil)
+        gapir("Ekran rasmi ish stoliga saqlandi.")
 
 
 TIL_SOZLARI = {"ru": ("rus", "русск"), "en": ("ingliz", "english", "англий"),
@@ -486,7 +607,7 @@ IJRO_SOZLAR = ("video", "rolik", "qo'y", "qo'", "ijro", "eshit", "ko'rsat", "top
 def youtube_qidiruv_sozi(gap):
     """'youtubedan babylon musiqasini qo'y' -> 'babylon musiqa'"""
     boshi = ("youtub", "yutub", "yutib", "ютуб", "video", "rolik", "qo'y", "ijro", "eshit",
-             "ko'rsat", "topib", "qidir", "ochib", "kerak", "keker", "iltimos")
+             "ko'rsat", "topib", "qidir", "ochib", "kerak", "keker", "iltimos", "yubor")
     aniq = {"och", "ber", "et", "top", "k", "menga", "qo'"}
     qolgan = [s for s in gap.split() if not s.startswith(boshi) and s not in aniq]
     # Google "youtubedan"ni "yutuqdan", "yulduzdan" deb eshitsa ham tashlab yuboramiz
@@ -790,6 +911,8 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
                 "Fayl qayerdaligini topaman, masalan: hisobot faylini top. "
                 "Savollarga Vikipediyadan javob beraman, masalan: Amir Temur kim. "
                 "Sozlamalar deng: ovozim, tilim va rangimni o'zgartirasiz. "
+                "Telegram bot orqali telefondan ham boshqarasiz: fayl va rasmlarni yuboraman, "
+                "ekran rasmini olaman. "
                 "Gapimni bo'lish uchun shunchaki gapiring, jim bo'lishim uchun to'xta deng. "
                 "Butunlay o'chishim uchun xayr deng.")
 
@@ -811,6 +934,13 @@ def bajar(b):
 
     elif sozlama_buyrugi(b):
         pass
+
+    elif bor(b, "ekran rasm", "skrinshot", "screenshot", "скриншот", "ekranni rasm"):
+        ekran_rasmi()
+
+    elif (javob_telegramga or bor(b, "telegram")) and bor(b, "tashla", "yubor", "jo'nat") \
+            and not bor(b, "qo'yib", "qo'y"):
+        telegramga_yubor(b)
 
     elif bor(b, "salom", "assalom"):
         gapir(f"Va alaykum assalom, {ISM}! Buyruq bering.")
@@ -937,8 +1067,9 @@ def bajar(b):
 
 # ---------- ASOSIY SIKL (miya thread'i) ----------
 def miya():
-    global media_boshlandi
+    global media_boshlandi, javob_telegramga
     ui_navbat.put(("sozlamalar", dict(SOZ)))
+    telegram_ishga_tushir()
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
@@ -961,7 +1092,10 @@ def miya():
             if manba == "ovoz" and not suhbatda:
                 continue                                # begona gap / qo'shiq — e'tibor bermaymiz
             buyruq = gap                                # yozilgan gapga "Jarvis" shart emas
-        ui_navbat.put(("siz", gap))
+        javob_telegramga = manba == "telegram"
+        ui_navbat.put(("siz", ("(Telegram) " if javob_telegramga else "") + gap))
+        if javob_telegramga and not buyruq:
+            buyruq = "salom"
         if not buyruq:
             gapir(f"Labbay, {ISM}?")
             suhbat_tugashi = time.time() + SUHBAT_VAQTI

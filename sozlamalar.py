@@ -30,7 +30,8 @@ RANGLAR = {
     "oq":       {"nomi": "Oq",       "xira": (130, 140, 160), "yorqin": (235, 245, 255)},
 }
 
-STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh"}
+STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
+            "telegram_token": "", "telegram_egasi": 0}
 
 
 def yukla():

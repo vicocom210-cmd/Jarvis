@@ -116,7 +116,31 @@ YOZUVLAR = {
                            "Die Einstellungen lassen sich auch per Stimme schließen.",
                            "Wenn ich spreche, verwandelt sich die Kugel jedes Mal."]},
 }
-BOLIMLAR = ("ovoz", "til", "korinish", "profil", "haqida")
+BOLIMLAR = ("ovoz", "til", "korinish", "profil", "telefon", "haqida")
+
+# Telefon bo'limi yozuvlari (boshqa tillarda tarjimasi bo'lmasa — o'zbekcha ko'rsatiladi)
+YOZUVLAR["uz"].update({
+    "telefon": "Telefon", "telefon_izoh": "Telegram bot orqali telefondan boshqarish.",
+    "tg_yoq": "Token kiritilmagan", "tg_kod": "Ulanish kutilmoqda — kodni botga yuboring",
+    "tg_ulangan": "Ulangan — telefondan buyruq bera olasiz", "tg_xato": "Token noto'g'ri yoki internet yo'q",
+    "tg_token": "Bot tokeni", "tg_uzish": "Uzish",
+    "tg_qadamlar": ["1. Telegram'da @BotFather ni oching va /newbot yozing.",
+                    "2. Botga nom bering — BotFather sizga token beradi.",
+                    "3. Tokenni nusxalab, yuqoridagi maydonga qo'ying (Ctrl+V) va Saqlash bosing.",
+                    "4. O'z botingizni oching va ekranda chiqqan 6 xonali kodni yuboring.",
+                    "Tayyor! Endi botga yozing: \"yuklamalardagi rasmlarni tashla\"."]})
+YOZUVLAR["ru"].update({"telefon": "Телефон", "telefon_izoh": "Управление с телефона через Telegram-бота.",
+                       "tg_yoq": "Токен не указан", "tg_kod": "Ожидание — отправьте код боту",
+                       "tg_ulangan": "Подключено", "tg_xato": "Неверный токен или нет интернета",
+                       "tg_token": "Токен бота", "tg_uzish": "Отключить"})
+YOZUVLAR["en"].update({"telefon": "Phone", "telefon_izoh": "Control from your phone via a Telegram bot.",
+                       "tg_yoq": "No token entered", "tg_kod": "Waiting — send the code to your bot",
+                       "tg_ulangan": "Connected", "tg_xato": "Wrong token or no internet",
+                       "tg_token": "Bot token", "tg_uzish": "Disconnect"})
+YOZUVLAR["de"].update({"telefon": "Telefon", "telefon_izoh": "Steuerung vom Handy über einen Telegram-Bot.",
+                       "tg_yoq": "Kein Token", "tg_kod": "Warte — Code an den Bot senden",
+                       "tg_ulangan": "Verbunden", "tg_xato": "Falscher Token oder kein Internet",
+                       "tg_token": "Bot-Token", "tg_uzish": "Trennen"})
 
 
 # ---------- WINDOWS: shaffof fon, doim ustida, joylashuv ----------
@@ -468,7 +492,9 @@ class Oyna:
 
         self.siz_matni = ""
         self.jarvis_matni = ""
-        self.matnlar = {"yozuv": "", "ism": self.sozlama["ism"]}
+        self.matnlar = {"yozuv": "", "ism": self.sozlama["ism"],
+                        "token": self.sozlama.get("telegram_token", "")}
+        self.tg_holat, self.tg_qiymat = ("yoq", "")
         self.faol = None                  # qaysi maydonga yozilyapti: "yozuv" yoki "ism"
         self.surish = None                # sichqoncha bilan surish boshlangan joy
         self.ishlayapti = True
@@ -493,8 +519,8 @@ class Oyna:
         return s
 
     def y(self, kalit):
-        """Oyna yozuvi tanlangan tilda."""
-        return YOZUVLAR.get(self.sozlama["til"], YOZUVLAR["uz"])[kalit]
+        """Oyna yozuvi tanlangan tilda (tarjimasi bo'lmasa — o'zbekcha)."""
+        return YOZUVLAR.get(self.sozlama["til"], YOZUVLAR["uz"]).get(kalit, YOZUVLAR["uz"][kalit])
 
     @property
     def yorqin(self):
@@ -587,8 +613,12 @@ class Oyna:
                 self.sozlama = dict(xabar[1])
                 if self.faol != "ism":
                     self.matnlar["ism"] = self.sozlama["ism"]
+                if self.faol != "token":
+                    self.matnlar["token"] = self.sozlama.get("telegram_token", "")
                 if self.rejim == "sozlama" and eski_rang != self.sozlama["rang"]:
                     self.soz_fon = self._sozlama_foni(self.eni, self.boyi)
+            elif tur == "telegram_holat":
+                self.tg_holat, self.tg_qiymat = xabar[1], xabar[2]
             elif tur == "sozlamalarni_och":
                 self.sozlamani_och()
             elif tur == "sozlamalarni_yop":
@@ -627,7 +657,7 @@ class Oyna:
                 if len(self.matnlar[self.faol]) < 200:
                     self.matnlar[self.faol] += h.text
             elif h.type == pygame.KEYDOWN:
-                if h.key == pygame.K_ESCAPE and self.rejim == "sozlama" and self.faol != "ism":
+                if h.key == pygame.K_ESCAPE and self.rejim == "sozlama" and self.faol not in ("ism", "token"):
                     self.sozlama_ochiq = False
                 elif self.faol:
                     self.tugma_bosildi(h)
@@ -662,7 +692,7 @@ class Oyna:
                 tugma.bosildi(joy)
                 self.amal(tid)
                 return
-        if self.faol == "ism":
+        if self.faol in ("ism", "token"):
             self.faol = None
 
     def amal(self, tid):
@@ -679,6 +709,13 @@ class Oyna:
             self.kirish_navbat.put(("ovoz_sinov", qiymat, time.time()))
         elif tur == "ism_maydon":
             self.faol = "ism"
+        elif tur == "token_maydon":
+            self.faol = "token"
+        elif tur == "token_saqlash":
+            self.sozlama_yubor("telegram_token", self.matnlar["token"].strip())
+            self.faol = None
+        elif tur == "tg_uzish":
+            self.sozlama_yubor("telegram_egasi", 0)
         elif tur == "saqlash":
             ism = self.matnlar["ism"].strip()
             if ism:
@@ -693,6 +730,9 @@ class Oyna:
                 if matn:
                     self.kirish_navbat.put(("yozuv", matn, time.time()))
                 self.matnlar["yozuv"] = ""
+            elif maydon == "token":
+                self.sozlama_yubor("telegram_token", matn)
+                self.faol = None
             elif matn:
                 self.sozlama_yubor("ism", matn)
                 self.faol = None
@@ -701,13 +741,15 @@ class Oyna:
         elif h.key == pygame.K_ESCAPE:
             if maydon == "yozuv":
                 self.matnlar["yozuv"] = ""
+            elif maydon == "token":
+                self.matnlar["token"] = self.sozlama.get("telegram_token", "")
             else:
                 self.matnlar["ism"] = self.sozlama["ism"]
             self.faol = None
         elif h.key == pygame.K_v and h.mod & pygame.KMOD_CTRL:
             try:
                 import pyperclip
-                self.matnlar[maydon] += pyperclip.paste().replace("\n", " ")[:200]
+                self.matnlar[maydon] += pyperclip.paste().replace("\n", " ").strip()[:200]
             except Exception:
                 pass
 
@@ -813,12 +855,14 @@ class Oyna:
         self.ekran.blit(q, (0, 0), special_flags=pygame.BLEND_ADD)
 
     # ----- asosiy oyna yozuvlari -----
-    def maydon_chiz(self, sirt, joy, maydon, bosh_matn, shrift):
+    def maydon_chiz(self, sirt, joy, maydon, bosh_matn, shrift, yashirin=False):
         faol = self.faol == maydon
         pygame.draw.rect(sirt, PANEL, joy, border_radius=10)
         pygame.draw.rect(sirt, self.yorqin if faol else (35, 60, 100), joy,
                          2 if faol else 1, border_radius=10)
         matn = self.matnlar[maydon]
+        if yashirin and not faol and len(matn) > 10:
+            matn = matn[:10] + "•" * 12                  # maxfiy token to'liq ko'rinmasin
         if matn or faol:
             while shrift.size(matn)[0] > joy.w - 28 and matn:
                 matn = matn[1:]
@@ -1013,6 +1057,9 @@ class Oyna:
         elif nom == "profil":
             pygame.draw.circle(sirt, rang, (x, y - 4), 5, 2)
             pygame.draw.arc(sirt, rang, (x - 9, y + 1, 18, 16), 0, math.pi, 2)
+        elif nom == "telefon":
+            pygame.draw.rect(sirt, rang, (x - 6, y - o, 12, o * 2), 2, border_radius=3)
+            pygame.draw.line(sirt, rang, (x - 2, y + o - 4), (x + 2, y + o - 4), 2)
         else:
             pygame.draw.circle(sirt, rang, c, o, 2)
             pygame.draw.line(sirt, rang, (x, y - 1), (x, y + 5), 2)
@@ -1212,6 +1259,62 @@ class Oyna:
                          border_radius=14)
         self.tolqinlar_chiz(c, st, k, 14)
         c.blit(yuza, (k.centerx - yuza.get_width() // 2, k.centery - yuza.get_height() // 2))
+
+    def bolim_telefon(self, c, x0, y0, dt, sichqoncha, vaqt):
+        sk = self.sk
+        # holat kartasi
+        ranglar = {"yoq": (120, 130, 150), "kod": (255, 190, 70), "ulangan": (80, 230, 140),
+                   "xato": (255, 90, 90)}
+        rang = ranglar.get(self.tg_holat, (120, 130, 150))
+        karta = pygame.Rect(x0, y0, int(640 * sk), int(90 * sk))
+        pygame.draw.rect(c, (16, 24, 42), karta, border_radius=16)
+        pygame.draw.rect(c, rang, karta, 1, border_radius=16)
+        puls = 0.6 + 0.4 * math.sin(vaqt * 4)
+        m = (karta.x + int(34 * sk), karta.centery)
+        pygame.draw.circle(c, (*rang, int(70 * puls)), m, int(14 * sk))
+        pygame.draw.circle(c, rang, m, int(7 * sk))
+        c.blit(self.sh["matn"].render(self.y("tg_" + self.tg_holat), True, (230, 238, 250)),
+               (karta.x + int(64 * sk), karta.y + int(18 * sk)))
+        if self.tg_holat == "kod":
+            c.blit(self.sh["katta"].render("  ".join(self.tg_qiymat), True, rang),
+                   (karta.right + int(24 * sk), karta.y + int(14 * sk)))
+        elif self.tg_holat == "ulangan" and self.tg_qiymat:
+            c.blit(self.sh["izoh"].render("@" + self.tg_qiymat, True, (130, 150, 180)),
+                   (karta.x + int(64 * sk), karta.y + int(50 * sk)))
+        if self.tg_holat == "ulangan":
+            yuza = self.sh["tugma"].render(self.y("tg_uzish"), True, (255, 150, 150))
+            uj = pygame.Rect(0, 0, yuza.get_width() + int(40 * sk), int(40 * sk))
+            uj.midright = (karta.right - int(20 * sk), karta.centery)
+            ut = self.tugma("tg_uzish", uj)
+            ut.yangila(dt, sichqoncha)
+            k = self.karta(c, ut, False, radius=uj.h // 2)
+            c.blit(yuza, (k.centerx - yuza.get_width() // 2, k.centery - yuza.get_height() // 2))
+
+        # token maydoni
+        y = karta.bottom + int(34 * sk)
+        c.blit(self.sh["izoh"].render(self.y("tg_token"), True, (140, 160, 190)), (x0, y))
+        y += int(28 * sk)
+        joy = pygame.Rect(x0, y, int(520 * sk), int(56 * sk))
+        t = self.tugma("token_maydon", joy)
+        t.yangila(dt, sichqoncha)
+        if t.ustida > 0.05 and self.faol != "token":
+            pygame.draw.rect(c, (*self.yorqin, int(60 * t.ustida)), joy.inflate(6, 6), 2, border_radius=12)
+        self.maydon_chiz(c, joy, "token", "123456789:AAE...", self.sh["matn"], yashirin=True)
+        yuza = self.sh["tugma"].render(self.y("saqlash"), True, (10, 16, 28))
+        sj = pygame.Rect(joy.right + int(18 * sk), y, yuza.get_width() + int(56 * sk), int(56 * sk))
+        st = self.tugma("token_saqlash", sj)
+        st.yangila(dt, sichqoncha)
+        k = st.korinish()
+        pygame.draw.rect(c, rang_aralashtir(self.yorqin, (255, 255, 255), st.ustida * 0.25), k,
+                         border_radius=14)
+        self.tolqinlar_chiz(c, st, k, 14)
+        c.blit(yuza, (k.centerx - yuza.get_width() // 2, k.centery - yuza.get_height() // 2))
+
+        # qadamlar
+        y = joy.bottom + int(40 * sk)
+        for i, qator in enumerate(self.y("tg_qadamlar")):
+            rang_ = self.yorqin if i == 4 else (200, 212, 232)
+            c.blit(self.sh["matn"].render(qator, True, rang_), (x0, y + i * int(36 * sk)))
 
     def bolim_haqida(self, c, x0, y0, dt, sichqoncha, vaqt):
         sk = self.sk
