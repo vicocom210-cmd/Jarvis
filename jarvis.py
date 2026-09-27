@@ -75,7 +75,7 @@ def ovoz_nomi():
     return sozlamalar.TILLAR[til()][SOZ["ovoz"]]
 
 
-def gapir(matn, tarjima_qil=True):
+def gapir(matn, tarjima_qil=True, ovoz=None):
     """Jarvis ichida hamma javob o'zbekcha yoziladi; boshqa til tanlangan bo'lsa,
     gapirishdan oldin o'sha tilga tarjima qilinadi."""
     if tarjima_qil and til() != "uz":
@@ -86,7 +86,7 @@ def gapir(matn, tarjima_qil=True):
         oldingi = joriy_holat
         gapiryapti.set()
         try:
-            _gapir(matn)
+            _gapir(matn, ovoz)
         finally:
             global gap_tugadi
             gap_tugadi = time.time()
@@ -103,9 +103,9 @@ def ovoz_balandliklari(tovush):
             for i in range(0, len(xom), qadam)]
 
 
-def _gapir(matn):
+def _gapir(matn, ovoz=None):
     try:
-        asyncio.run(edge_tts.Communicate(matn, ovoz_nomi()).save(AUDIO_FAYL))
+        asyncio.run(edge_tts.Communicate(matn, ovoz or ovoz_nomi()).save(AUDIO_FAYL))
         tovush = pygame.mixer.Sound(AUDIO_FAYL)
         try:
             ui_navbat.put(("ovoz", ovoz_balandliklari(tovush), time.time()))
@@ -187,6 +187,10 @@ def keyingi_gap(kutish):
         if manba == "sozlama":                  # oynadagi menyuda tanlandi
             sozlama_ozgartir(*matn)
             continue
+        if manba == "ovoz_sinov":               # menyuda "Eshitib ko'rish" bosildi
+            gapir(f"Salom, {ISM}! Men shu ovozda gapiraman.",
+                  ovoz=sozlamalar.TILLAR[til()][matn])
+            continue
         if manba == "yozuv":
             matn = normallashtir(matn)
         if vaqt >= gap_tugadi:
@@ -255,8 +259,13 @@ def ism_ajrat(gap):
 def sozlama_buyrugi(b):
     """Ovoz bilan sozlash. Bajarilsa True qaytaradi."""
     if bor(b, "sozlama", "nastroyka", "настрой"):
-        ui_navbat.put(("sozlamalarni_och",))
-        gapir("Sozlamalarni ochdim.")
+        # "sozlamalarni yop", "sozlamalardan chiq" — yopish; qolgani — ochish
+        if bor(b, "yop", "chiq", "berk", "ket", "закр", "выйд", "close", "schlie"):
+            ui_navbat.put(("sozlamalarni_yop",))
+            gapir("Sozlamalar yopildi.")
+        else:
+            ui_navbat.put(("sozlamalarni_och",))
+            gapir("Sozlamalarni ochdim.")
         return True
     if bor(b, "ovoz") and bor(b, "ayol", "qiz", "xotin", "женск"):
         sozlama_ozgartir("ovoz", "ayol")
