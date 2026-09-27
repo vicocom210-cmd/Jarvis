@@ -534,6 +534,8 @@ class Oyna:
         self.tg_holat, self.tg_qiymat = ("yoq", "")
         self.faol = None                  # qaysi maydonga yozilyapti: "yozuv" yoki "ism"
         self.surish = None                # sichqoncha bilan surish boshlangan joy
+        self.surildi = False
+        self.bosgan_joy = (0, 0)
         self.ishlayapti = True
 
         # sozlamalar ilovasi
@@ -695,9 +697,17 @@ class Oyna:
                 else:
                     self.bosildi(h.pos)
             elif h.type == pygame.MOUSEBUTTONUP and h.button == 1:
+                # sharni sichqoncha bilan surmasdan bosgan bo'lsa (tap) — uyg'otamiz
+                if (self.surish and not self.surildi and self.rejim != "sozlama"
+                        and math.hypot(h.pos[0] - self.markaz[0], h.pos[1] - self.markaz[1])
+                        < self.R0 * 1.5):
+                    self.kirish_navbat.put(("uygon", "", time.time()))
                 self.surish = None
+                self.surildi = False
             elif h.type == pygame.MOUSEMOTION and self.surish:
                 mx, my = sichqoncha_ekranda()
+                if abs(mx - self.bosgan_joy[0]) + abs(my - self.bosgan_joy[1]) > 5:
+                    self.surildi = True      # sezilarli siljidi — bu surish, tap emas
                 oynani_sur(mx - self.surish[0], my - self.surish[1])
             elif h.type == pygame.TEXTINPUT and self.faol:
                 if len(self.matnlar[self.faol]) < 200:
@@ -722,6 +732,8 @@ class Oyna:
         mx, my = sichqoncha_ekranda()
         ox, oy = oyna_joyi()
         self.surish = (mx - ox, my - oy)
+        self.bosgan_joy = (mx, my)          # tap yoki surish ekanini bilish uchun
+        self.surildi = False
 
     def sozlamada_bosildi(self, joy):
         if self.soz_t < 0.6:

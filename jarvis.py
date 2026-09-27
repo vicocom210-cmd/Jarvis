@@ -170,11 +170,21 @@ def mikrofon_ishi():
     except Exception as xato:
         print(f"(Mikrofon topilmadi: {xato}) — pastdagi maydonga yozib buyruq bering.")
         return
-    tanib.pause_threshold = 0.6         # gap tugaganini tezroq sezadi (standart 0.8)
-    tanib.non_speaking_duration = 0.4
+    tanib.pause_threshold = 0.7          # gap orasidagi kichik to'xtashda kesib qo'ymaydi
+    tanib.non_speaking_duration = 0.3
+    tanib.dynamic_energy_threshold = True    # atrof shovqiniga o'zi moslashadi
     with mikrofon as mic:
         tanib.adjust_for_ambient_noise(mic, duration=1)
+        tanib.energy_threshold = min(tanib.energy_threshold, 250)   # sezgirroq (past ovozni ham)
+        oxirgi_sozlash = time.time()
         while True:
+            if time.time() - oxirgi_sozlash > 60:    # har daqiqada shovqinga qayta moslashadi
+                try:
+                    tanib.adjust_for_ambient_noise(mic, duration=0.3)
+                    tanib.energy_threshold = min(tanib.energy_threshold, 250)
+                except Exception:
+                    pass
+                oxirgi_sozlash = time.time()
             # Shazam so'rasa — musiqani yozib beramiz
             try:
                 soniya, javob = yozib_ber_navbat.get_nowait()
@@ -189,7 +199,7 @@ def mikrofon_ishi():
             # Jarvis gapirayotganda ham tinglaymiz — shunda uning gapini bo'lish mumkin
             gapirganda = gapiryapti.is_set()
             try:
-                audio = tanib.listen(mic, timeout=3, phrase_time_limit=4 if gapirganda else 7)
+                audio = tanib.listen(mic, timeout=3, phrase_time_limit=5 if gapirganda else 9)
             except sr.WaitTimeoutError:
                 continue
             except Exception as xato:           # mikrofon uzilsa ham thread to'xtamasin
@@ -1523,6 +1533,11 @@ def miya():
         if not kelgan:
             continue
         manba, gap = kelgan
+
+        if manba == "uygon":                        # sharni bosdi — uyg'onadi
+            gapir(f"Labbay, {ISM}?")
+            suhbat_tugashi = time.time() + SUHBAT_VAQTI
+            continue
 
         chaqirildi, buyruq = chaqiruvni_ajrat(gap)
         if not chaqirildi:
