@@ -122,6 +122,11 @@
     <input id="pin" placeholder="0000" inputmode="numeric">
     <label id="s-groq">Groq API kaliti (bepul)</label>
     <input id="groq" placeholder="gsk_...">
+    <label id="s-suzuvchi">Suzuvchi shar (boshqa ilovalar ustida)</label>
+    <div class="chiplar">
+      <div class="chip" onclick="try{Android.suzuvchiYoq()}catch(e){}">Yoqish</div>
+      <div class="chip" onclick="try{Android.suzuvchiOchir()}catch(e){}">O'chirish</div>
+    </div>
     <button class="knop" id="s-saqla" onclick="sozlamaSaqla()">Saqlash</button>
   </div>
 </div>
@@ -269,6 +274,10 @@ function ishlash(t){
 }
 
 function stikerYubor(t){ tabTanla('suhbat'); pufak('men',t); yurgiz(t); }
+// Suzuvchi shardan chaqirilganda
+window.uygon=function(){ pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqda=true; };
+window.uygonBuyruq=function(t){ t=(t||'').trim(); if(!t){ window.uygon(); return; }
+  tabTanla('suhbat'); pufak('men',t); yurgiz(t); };
 function yubor(){ const t=matn.value.trim(); if(!t) return; matn.value=''; pufak('men',t); yurgiz(t); }
 function yurgiz(t){ if(rejim==='kompyuter') kompyuterGa(t); else suhbatJavob(t); }
 

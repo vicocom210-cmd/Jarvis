@@ -2,8 +2,12 @@ package uz.jarvis
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognizerIntent
@@ -64,6 +68,27 @@ class MainActivity : android.app.Activity() {
             != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
         }
+        uygonTekshir(intent)
+    }
+
+    override fun onNewIntent(i: Intent?) {
+        super.onNewIntent(i)
+        setIntent(i)
+        uygonTekshir(i)
+    }
+
+    // Suzuvchi shardan "uygon" bilan ochilsa — darhol tinglashni boshlaymiz
+    private fun uygonTekshir(i: Intent?) {
+        if (i?.getBooleanExtra("uygon", false) == true) {
+            val buyruq = i.getStringExtra("buyruq")
+            asosiy.postDelayed({
+                if (buyruq.isNullOrBlank()) web.evaluateJavascript("window.uygon && window.uygon()", null)
+                else {
+                    val x = buyruq.replace("\\", "\\\\").replace("'", "\\'")
+                    web.evaluateJavascript("window.uygonBuyruq && window.uygonBuyruq('$x')", null)
+                }
+            }, 900)
+        }
     }
 
     // JS -> Kotlin ko'prigi
@@ -81,6 +106,24 @@ class MainActivity : android.app.Activity() {
         @JavascriptInterface
         fun tingla() {
             asosiy.post { boshlaTinglash() }
+        }
+
+        @JavascriptInterface
+        fun suzuvchiYoq() {
+            asosiy.post {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
+                    // "Boshqa ilovalar ustida ko'rsatish" ruxsatini so'raymiz
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")))
+                } else {
+                    startForegroundService(Intent(this@MainActivity, OverlayService::class.java))
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun suzuvchiOchir() {
+            asosiy.post { stopService(Intent(this@MainActivity, OverlayService::class.java)) }
         }
     }
 
