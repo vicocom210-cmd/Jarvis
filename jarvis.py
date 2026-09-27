@@ -13,6 +13,7 @@ import asyncio
 import audioop
 import datetime
 import difflib
+import io
 import os
 import queue
 import re
@@ -63,8 +64,12 @@ joriy_holat = "kutish"
 
 # ---------- 1. GAPIRISH ----------
 ovoz_qulfi = threading.Lock()     # ikki ish bir vaqtda gapirmoqchi bo'lsa, navbat bilan gapiradi
-gapiryapti = threading.Event()    # Jarvis gapirayotganda mikrofon o'z ovozini eshitmasin
+gapiryapti = threading.Event()    # Jarvis hozir gapiryaptimi
+uzildi = threading.Event()        # siz Jarvisning gapini bo'ldingiz — u darhol jim bo'ladi
 gap_tugadi = 0.0                  # Jarvis oxirgi marta qachon gapirib bo'ldi
+hozirgi_gap = ""                  # Jarvis hozir aytayotgan matn (o'z aks-sadosini tanish uchun)
+uzish_mumkin = True               # False — bu gapni bo'lib bo'lmaydi (masalan, Shazam paytida)
+_ovoz_xotira = {}                 # qisqa gaplar ovozi xotirada — "Labbay" darhol aytiladi
 
 
 def til():
@@ -75,15 +80,20 @@ def ovoz_nomi():
     return sozlamalar.TILLAR[til()][SOZ["ovoz"]]
 
 
-def gapir(matn, tarjima_qil=True, ovoz=None):
+def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False):
     """Jarvis ichida hamma javob o'zbekcha yoziladi; boshqa til tanlangan bo'lsa,
-    gapirishdan oldin o'sha tilga tarjima qilinadi."""
+    gapirishdan oldin o'sha tilga tarjima qilinadi.
+    uzilmas=True — bu gapni bo'lib bo'lmaydi."""
+    global hozirgi_gap, uzish_mumkin
     if tarjima_qil and til() != "uz":
         matn = tarjima(matn, "uz", til())
     print(f"Jarvis: {matn}")
     ui_navbat.put(("jarvis", matn))
+    if uzildi.is_set():
+        return                  # gapini bo'ldingiz — javobning qolganini ovoz chiqarib aytmaydi
     with ovoz_qulfi:
         oldingi = joriy_holat
+        hozirgi_gap, uzish_mumkin = matn, not uzilmas
         gapiryapti.set()
         try:
             _gapir(matn, ovoz)
@@ -103,10 +113,26 @@ def ovoz_balandliklari(tovush):
             for i in range(0, len(xom), qadam)]
 
 
+def _ovoz_yasa(matn, ovoz):
+    """Matnni ovozga aylantiradi. Qisqa gaplar xotirada saqlanadi — keyingi safar darhol."""
+    kalit = (matn, ovoz)
+    if kalit in _ovoz_xotira:
+        return _ovoz_xotira[kalit]
+    asyncio.run(edge_tts.Communicate(matn, ovoz).save(AUDIO_FAYL))
+    with open(AUDIO_FAYL, "rb") as f:
+        malumot = f.read()
+    if len(matn) <= 60 and len(_ovoz_xotira) < 100:
+        _ovoz_xotira[kalit] = malumot
+    return malumot
+
+
 def _gapir(matn, ovoz=None):
     try:
-        asyncio.run(edge_tts.Communicate(matn, ovoz or ovoz_nomi()).save(AUDIO_FAYL))
-        tovush = pygame.mixer.Sound(AUDIO_FAYL)
+        malumot = _ovoz_yasa(matn, ovoz or ovoz_nomi())
+        try:
+            tovush = pygame.mixer.Sound(file=io.BytesIO(malumot))
+        except Exception:
+            tovush = pygame.mixer.Sound(AUDIO_FAYL)
         try:
             ui_navbat.put(("ovoz", ovoz_balandliklari(tovush), time.time()))
         except Exception:
@@ -114,7 +140,10 @@ def _gapir(matn, ovoz=None):
         holat("gapirish")
         kanal = tovush.play()
         while kanal.get_busy():
-            time.sleep(0.05)
+            if uzildi.is_set():             # gapimni bo'ldingiz — darhol jim bo'laman
+                kanal.stop()
+                break
+            time.sleep(0.03)
     except Exception as xato:
         print(f"(Ovoz chiqmadi: {xato})")
 
@@ -133,6 +162,8 @@ def mikrofon_ishi():
     except Exception as xato:
         print(f"(Mikrofon topilmadi: {xato}) — pastdagi maydonga yozib buyruq bering.")
         return
+    tanib.pause_threshold = 0.6         # gap tugaganini tezroq sezadi (standart 0.8)
+    tanib.non_speaking_duration = 0.4
     with mikrofon as mic:
         tanib.adjust_for_ambient_noise(mic, duration=1)
         while True:
@@ -143,30 +174,53 @@ def mikrofon_ishi():
                 continue
             except queue.Empty:
                 pass
-            if gapiryapti.is_set():
+            if gapiryapti.is_set() and not uzish_mumkin:
                 time.sleep(0.1)
                 continue
             boshlandi = time.time()
+            # Jarvis gapirayotganda ham tinglaymiz — shunda uning gapini bo'lish mumkin
+            gapirganda = gapiryapti.is_set()
             try:
-                audio = tanib.listen(mic, timeout=3, phrase_time_limit=7)
+                audio = tanib.listen(mic, timeout=3, phrase_time_limit=4 if gapirganda else 7)
             except sr.WaitTimeoutError:
                 continue
             except Exception as xato:           # mikrofon uzilsa ham thread to'xtamasin
                 print(f"(Mikrofon xatosi: {xato})")
                 time.sleep(1)
                 continue
-            if gapiryapti.is_set() or gap_tugadi > boshlandi:
-                continue                    # bu Jarvisning o'z ovozi edi
-            threading.Thread(target=matnga_aylantir, args=(audio,), daemon=True).start()
+            gapirganda = gapirganda or gapiryapti.is_set() or gap_tugadi > boshlandi
+            if gapirganda and not uzish_mumkin:
+                continue
+            threading.Thread(target=matnga_aylantir, args=(audio, gapirganda, hozirgi_gap),
+                             daemon=True).start()
 
 
-def matnga_aylantir(audio):
+def aks_sadomi(eshitilgan, jarvis_gapi):
+    """Mikrofon Jarvisning o'z ovozini (karnaydan) eshitdimi?
+    Eshitilgan so'zlarning yarmidan ko'pi Jarvis aytgan gapda bo'lsa — ha."""
+    sozlar = normallashtir(eshitilgan).split()
+    jarvis_sozlari = normallashtir(jarvis_gapi).replace(",", " ").replace(".", " ").split()
+    if not sozlar:
+        return True
+    mos = sum(1 for s in sozlar
+              if s in jarvis_sozlari or difflib.get_close_matches(s, jarvis_sozlari, 1, 0.75))
+    return mos / len(sozlar) >= 0.5
+
+
+def matnga_aylantir(audio, gapirganda=False, jarvis_gapi=""):
     try:
         matn = tanib.recognize_google(audio, language=sozlamalar.TILLAR[til()]["google"])
     except sr.UnknownValueError:
         return
     except sr.RequestError:
         print("(Internet bilan muammo bor)")
+        return
+    if gapirganda:
+        if aks_sadomi(matn, jarvis_gapi):
+            return                          # o'z ovozim — e'tibor bermayman
+        print(f"✋ Gapimni bo'ldingiz: {matn}")
+        uzildi.set()                        # Jarvis darhol jim bo'ladi
+        kirish_navbat.put(("uzish", normallashtir(matn), time.time()))
         return
     print(f"Eshitildi: {matn}")
     kirish_navbat.put(("ovoz", normallashtir(matn), time.time()))
@@ -193,7 +247,8 @@ def keyingi_gap(kutish):
             continue
         if manba == "yozuv":
             matn = normallashtir(matn)
-        if vaqt >= gap_tugadi:
+        if vaqt >= gap_tugadi or manba == "uzish":
+            uzildi.clear()                      # yangi gap keldi — Jarvis yana gapira oladi
             return manba, matn
 
 
@@ -470,7 +525,7 @@ def musiqani_tani():
     except ImportError:
         gapir("Buning uchun avval shazamio kutubxonasini o'rnating.")
         return
-    gapir("Musiqani yoqing, 10 soniya tinglayman.")
+    gapir("Musiqani yoqing, 10 soniya tinglayman.", uzilmas=True)
     print("🎵 Musiqani tinglayapman...")
     holat("shazam")
     javob = queue.Queue()
@@ -735,15 +790,24 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
                 "Fayl qayerdaligini topaman, masalan: hisobot faylini top. "
                 "Savollarga Vikipediyadan javob beraman, masalan: Amir Temur kim. "
                 "Sozlamalar deng: ovozim, tilim va rangimni o'zgartirasiz. "
-                "To'xtatish uchun xayr deng.")
+                "Gapimni bo'lish uchun shunchaki gapiring, jim bo'lishim uchun to'xta deng. "
+                "Butunlay o'chishim uchun xayr deng.")
 
 
 # ---------- 6. BUYRUQLAR (faqat ruxsat berilganlar) ----------
 def bajar(b):
     """False qaytarsa, dastur to'xtaydi."""
-    if bor(b, "xayr", "to'xta"):
+    if bor(b, "xayr"):
         gapir(f"Xayr, {ISM}!")
         return False
+
+    elif bor(b, "musiq", "qo'shiq", "video", "pauza") and bor(b, "to'xtat", "pauza", "davom"):
+        pyautogui.press("playpause")                # klaviaturadagi ⏯ tugmasi
+        gapir("Bajarildi.")
+
+    elif len(b.split()) <= 3 and {"to'xta", "jim", "bas", "yetar", "yetadi", "stop", "стоп",
+                                  "хватит"} & set(b.replace(",", " ").split()):
+        pass                                        # gapirishni to'xtatdi — boshqa ish yo'q
 
     elif sozlama_buyrugi(b):
         pass

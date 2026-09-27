@@ -54,7 +54,7 @@ BAYROQLAR = {"uz": [(30, 150, 230), (240, 240, 240), (30, 170, 80)],
 YOZUVLAR = {
     "uz": {"kutish": "Kutish rejimi — Jarvis deng", "tinglash": "Tinglayapman…",
            "o'ylash": "Bajaryapman…", "gapirish": "Gapiryapman…",
-           "shazam": "Musiqani tinglayapman…", "yozing": "Shu yerga yozing va Enter bosing…",
+           "shazam": "Musiqani tinglayapman…", "yozing": "Buyruq yozing…",
            "siz": "Siz", "sozlamalar": "Sozlamalar", "ovoz": "Ovoz", "ayol": "Ayol ovozi",
            "erkak": "Erkak ovozi", "til": "Til", "korinish": "Ko'rinish", "profil": "Profil",
            "haqida": "Haqida", "yopish": "Yopish", "saqlash": "Saqlash",
@@ -70,7 +70,7 @@ YOZUVLAR = {
                            "Gapirganimda shar har safar yangi shaklga kiradi."]},
     "ru": {"kutish": "Ожидание — скажите Джарвис", "tinglash": "Слушаю…",
            "o'ylash": "Выполняю…", "gapirish": "Говорю…", "shazam": "Слушаю музыку…",
-           "yozing": "Напишите здесь и нажмите Enter…", "siz": "Вы",
+           "yozing": "Напишите команду…", "siz": "Вы",
            "sozlamalar": "Настройки", "ovoz": "Голос", "ayol": "Женский голос",
            "erkak": "Мужской голос", "til": "Язык", "korinish": "Внешний вид",
            "profil": "Профиль", "haqida": "О программе", "yopish": "Закрыть",
@@ -86,7 +86,7 @@ YOZUVLAR = {
                            "Когда я говорю, сфера каждый раз меняет форму."]},
     "en": {"kutish": "Standby — say Jarvis", "tinglash": "Listening…",
            "o'ylash": "Working…", "gapirish": "Speaking…", "shazam": "Listening to music…",
-           "yozing": "Type here and press Enter…", "siz": "You", "sozlamalar": "Settings",
+           "yozing": "Type a command…", "siz": "You", "sozlamalar": "Settings",
            "ovoz": "Voice", "ayol": "Female voice", "erkak": "Male voice", "til": "Language",
            "korinish": "Appearance", "profil": "Profile", "haqida": "About",
            "yopish": "Close", "saqlash": "Save", "sinab": "Preview", "tanlangan": "Selected",
@@ -101,7 +101,7 @@ YOZUVLAR = {
                            "When I speak, the sphere morphs into a new shape."]},
     "de": {"kutish": "Bereit — sag Jarvis", "tinglash": "Ich höre zu…",
            "o'ylash": "Ich arbeite…", "gapirish": "Ich spreche…", "shazam": "Ich höre Musik…",
-           "yozing": "Hier tippen und Enter drücken…", "siz": "Sie",
+           "yozing": "Befehl eingeben…", "siz": "Sie",
            "sozlamalar": "Einstellungen", "ovoz": "Stimme", "ayol": "Weibliche Stimme",
            "erkak": "Männliche Stimme", "til": "Sprache", "korinish": "Aussehen",
            "profil": "Profil", "haqida": "Über", "yopish": "Schließen", "saqlash": "Speichern",
@@ -442,6 +442,10 @@ class Oyna:
         f = "segoeui,arial"
         self.shrift = pygame.font.SysFont(f, 15)
         self.shrift_kichik = pygame.font.SysFont(f, 12)
+        self.shrift_yozuv = pygame.font.SysFont(f, 16)
+        self._matn_xotira = {}
+        self.yozuv_nur = 0.0
+        self.yuborish_joyi = pygame.Rect(0, 0, 0, 0)
         sk = max(0.85, min(1.5, self.olchamlar["sozlama"][1] / 1080))
         self.sk = sk
         self.sh = {"izoh": pygame.font.SysFont(f, int(16 * sk)),
@@ -521,8 +525,8 @@ class Oyna:
         self.shar_qatlami = pygame.Surface((eni, self.markaz[1] + chegara + 4))
         pastki = self.markaz[1] + chegara
         self.holat_y = pastki + 12
-        self.panel = pygame.Rect(10, pastki + 28, eni - 20, boyi - pastki - 28 - 60)
-        self.yozuv_joyi = pygame.Rect(14, boyi - 50, eni - 28, 36)
+        self.panel = pygame.Rect(10, pastki + 24, eni - 20, boyi - pastki - 24 - 72)
+        self.yozuv_joyi = pygame.Rect(16, boyi - 62, eni - 32, 46)
         self.yopish_joyi = pygame.Rect(eni - 30, 6, 24, 24)
         self.sozlama_joyi = pygame.Rect(6, 6, 24, 24)
 
@@ -634,6 +638,12 @@ class Oyna:
             return
         if self.sozlama_joyi.collidepoint(joy):
             self.sozlamani_och()
+            return
+        if self.yuborish_joyi.collidepoint(joy):
+            matn = self.matnlar["yozuv"].strip()
+            if matn:
+                self.kirish_navbat.put(("yozuv", matn, time.time()))
+                self.matnlar["yozuv"] = ""
             return
         if self.yozuv_joyi.collidepoint(joy):
             self.faol = "yozuv"
@@ -834,33 +844,109 @@ class Oyna:
                                  (c[0] + math.cos(b) * 8, c[1] + math.sin(b) * 8), 2)
             pygame.draw.circle(self.ekran, rang, c, 5, 2)
 
-    def matnlarni_chiz(self):
+    def soyali_matn(self, matn, shrift, rang):
+        """Ramkasiz matn: atrofida ingichka to'q soya — har qanday fonda o'qiladi.
+        Tayyor rasm xotirada saqlanadi (har kadrda qayta chizmaslik uchun)."""
+        kalit = (matn, rang, id(shrift))
+        yuza = self._matn_xotira.get(kalit)
+        if yuza is None:
+            asosiy = shrift.render(matn, True, rang)
+            soya = shrift.render(matn, True, (6, 10, 18))
+            yuza = pygame.Surface((asosiy.get_width() + 4, asosiy.get_height() + 4))
+            yuza.fill((0, 0, 0))
+            yuza.set_colorkey((0, 0, 0))
+            for dx in (0, 1, 2, 3, 4):
+                for dy in (0, 1, 2, 3, 4):
+                    if (dx, dy) != (2, 2):
+                        yuza.blit(soya, (dx, dy))
+            yuza.blit(asosiy, (2, 2))
+            if len(self._matn_xotira) > 200:
+                self._matn_xotira.clear()
+            self._matn_xotira[kalit] = yuza
+        return yuza
+
+    def yozish_joyi_chiz(self, sichqoncha, dt):
+        """Zamonaviy yozish joyi: to'liq yumaloq (kapsula), semizroq, shisha kabi,
+        bosilganda porlaydi; o'ngda yuborish tugmasi."""
+        joy = self.yozuv_joyi
+        faol = self.faol == "yozuv"
         yorqin = self.yorqin
-        chegara = tuple(int(c * 0.4) for c in yorqin)
+        self.yozuv_nur = aralashtir(self.yozuv_nur, 1.0 if faol else
+                                    (0.45 if joy.collidepoint(sichqoncha) else 0.0), min(1.0, dt * 10))
+        r = joy.h // 2
+        # tashqi nur (faol bo'lsa kuchliroq)
+        for i in range(3, 0, -1):
+            kuch = self.yozuv_nur * (0.22 / i)
+            rang = tuple(max(1, int(c * kuch)) for c in yorqin)
+            pygame.draw.rect(self.ekran, rang, joy.inflate(i * 4, i * 4), border_radius=r + i * 2)
+        # shisha ichi: yuqorisi biroz yorug'roq
+        pygame.draw.rect(self.ekran, (9, 14, 26), joy, border_radius=r)
+        yuqori = pygame.Rect(joy.x + r // 2, joy.y + 2, joy.w - r, joy.h // 2 - 2)
+        pygame.draw.rect(self.ekran, (14, 21, 37), yuqori, border_radius=joy.h // 4)
+        chegara = rang_aralashtir((40, 60, 95), yorqin, 0.35 + 0.65 * self.yozuv_nur)
+        pygame.draw.rect(self.ekran, tuple(int(c) for c in chegara), joy, 2, border_radius=r)
+
+        # chapda mikrofon belgisi
+        mx, my = joy.x + 24, joy.centery
+        mrang = tuple(int(c) for c in rang_aralashtir((90, 110, 140), yorqin, self.yozuv_nur))
+        pygame.draw.rect(self.ekran, mrang, (mx - 4, my - 9, 8, 13), border_radius=4)
+        pygame.draw.arc(self.ekran, mrang, (mx - 8, my - 6, 16, 14), math.pi, 2 * math.pi, 2)
+        pygame.draw.line(self.ekran, mrang, (mx, my + 8), (mx, my + 11), 2)
+
+        # o'ngda yuborish tugmasi (doira ichida o'q)
+        self.yuborish_joyi = pygame.Rect(joy.right - joy.h + 5, joy.y + 5, joy.h - 10, joy.h - 10)
+        yj = self.yuborish_joyi
+        ustida = yj.collidepoint(sichqoncha)
+        bor_matn = bool(self.matnlar["yozuv"].strip())
+        trang = yorqin if bor_matn else (35, 50, 80)
+        if ustida and bor_matn:
+            trang = rang_aralashtir(yorqin, (255, 255, 255), 0.3)
+        pygame.draw.circle(self.ekran, tuple(int(c) for c in trang), yj.center, yj.w // 2)
+        cx, cy = yj.center
+        orang = (10, 16, 28) if bor_matn else (90, 110, 140)
+        pygame.draw.line(self.ekran, orang, (cx, cy + 6), (cx, cy - 6), 2)
+        pygame.draw.lines(self.ekran, orang, False, [(cx - 5, cy - 1), (cx, cy - 6), (cx + 5, cy - 1)], 2)
+
+        # matn
+        matn = self.matnlar["yozuv"]
+        chap = joy.x + 44
+        eni = yj.x - chap - 8
+        if matn or faol:
+            while self.shrift_yozuv.size(matn)[0] > eni and matn:
+                matn = matn[1:]
+            kursor = "|" if faol and int(time.time() * 2) % 2 == 0 else ""
+            yuza = self.shrift_yozuv.render(matn + kursor, True, (230, 238, 250))
+        else:
+            yuza = self.shrift_yozuv.render(self.y("yozing"), True, (95, 115, 150))
+            while yuza.get_width() > eni and self.shrift_yozuv.size("…")[0] < eni:
+                yuza = yuza.subsurface((0, 0, eni, yuza.get_height()))
+        self.ekran.blit(yuza, (chap, joy.centery - yuza.get_height() // 2))
+
+    def matnlarni_chiz(self, dt=0.025):
+        yorqin = self.yorqin
         sichqoncha = pygame.mouse.get_pos()
 
-        panel = self.panel
-        pygame.draw.rect(self.ekran, PANEL, panel, border_radius=12)
-        pygame.draw.rect(self.ekran, chegara, panel, 1, border_radius=12)
-        y = panel.y + 8
+        # siz va Jarvis gaplari — ramkasiz, markazda, soyali
+        maydon = self.panel
+        qatorlar = []
         if self.siz_matni:
-            for qator in matnni_bol(self.shrift, f"{self.y('siz')}: " + self.siz_matni,
-                                    panel.w - 20, 2):
-                self.ekran.blit(self.shrift.render(qator, True, (200, 210, 225)), (panel.x + 10, y))
-                y += 19
+            for qator in matnni_bol(self.shrift, self.siz_matni, maydon.w - 16, 2):
+                qatorlar.append((qator, (175, 188, 210)))
         if self.jarvis_matni:
-            for qator in matnni_bol(self.shrift, "Jarvis: " + self.jarvis_matni, panel.w - 20,
-                                    max(1, (panel.bottom - y - 4) // 19)):
-                self.ekran.blit(self.shrift.render(qator, True, yorqin), (panel.x + 10, y))
-                y += 19
+            qolgan = max(1, (maydon.h - len(qatorlar) * 20) // 20)
+            for qator in matnni_bol(self.shrift, self.jarvis_matni, maydon.w - 16, qolgan):
+                qatorlar.append((qator, yorqin))
+        y = maydon.y + 4
+        for qator, rang in qatorlar:
+            yuza = self.soyali_matn(qator, self.shrift, rang)
+            self.ekran.blit(yuza, (self.eni // 2 - yuza.get_width() // 2, y))
+            y += 20
 
-        self.maydon_chiz(self.ekran, self.yozuv_joyi, "yozuv", self.y("yozing"), self.shrift)
+        self.yozish_joyi_chiz(sichqoncha, dt)
 
-        yuza = self.shrift_kichik.render(self.y(self.holat), True, tuple(int(c * 0.75) for c in yorqin))
-        fon = pygame.Rect(0, 0, yuza.get_width() + 16, 20)
-        fon.center = (self.eni // 2, self.holat_y)
-        pygame.draw.rect(self.ekran, PANEL, fon, border_radius=10)
-        self.ekran.blit(yuza, (fon.x + 8, fon.y + 3))
+        yuza = self.soyali_matn(self.y(self.holat), self.shrift_kichik,
+                                tuple(int(c * 0.8) for c in yorqin))
+        self.ekran.blit(yuza, (self.eni // 2 - yuza.get_width() // 2, self.holat_y - 9))
 
         self.kichik_tugma(self.yopish_joyi, "x", sichqoncha)
         self.kichik_tugma(self.sozlama_joyi, "g", sichqoncha)
@@ -1149,6 +1235,6 @@ class Oyna:
             else:
                 self.ekran.fill(FON)
                 self.shar_chiz(vaqt)
-                self.matnlarni_chiz()
+                self.matnlarni_chiz(dt)
             pygame.display.flip()
         pygame.quit()
