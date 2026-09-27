@@ -21,18 +21,24 @@ import java.util.Locale
 
 // Jarvis telefon ilovasi: ko'rinish va mantiq assets/index.html ichida (HTML/JS).
 // Bu Kotlin qismi faqat mikrofon (ovozni matnga) va ovoz chiqarish (matnni ovozga) ni ulaydi.
-class MainActivity : android.app.Activity() {
+// PanelActivity shu klassdan meros oladi (Bixby'dek suzuvchi panel).
+open class MainActivity : android.app.Activity() {
 
-    private lateinit var web: WebView
+    protected lateinit var web: WebView
     private var tts: TextToSpeech? = null
     private var sr: SpeechRecognizer? = null
     private val asosiy = Handler(Looper.getMainLooper())
+
+    // Panel (shaffof) rejimida bular boshqacha bo'ladi
+    protected open fun sahifaManzili() = "file:///android_asset/index.html"
+    protected open val shaffof = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
         web = WebView(this)
         setContentView(web)
+        if (shaffof) web.setBackgroundColor(0x00000000)   // panel — orqadagi ilova ko'rinsin
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false
@@ -42,7 +48,7 @@ class MainActivity : android.app.Activity() {
             }
         }
         web.addJavascriptInterface(Kopruk(), "Android")
-        web.loadUrl("file:///android_asset/index.html")
+        web.loadUrl(sahifaManzili())
 
         // Avval o'zbek; bo'lmasa turk (lotin yozuvga eng yaqin), keyin rus, keyin standart
         fun tilTanla() {
@@ -125,6 +131,12 @@ class MainActivity : android.app.Activity() {
         fun suzuvchiOchir() {
             asosiy.post { stopService(Intent(this@MainActivity, OverlayService::class.java)) }
         }
+
+        // Panel rejimida — javob berib bo'lgach oynani yopadi (orqadagi ilovaga qaytadi)
+        @JavascriptInterface
+        fun panelYop() {
+            asosiy.post { finish() }
+        }
     }
 
     private fun boshlaTinglash() {
@@ -161,9 +173,13 @@ class MainActivity : android.app.Activity() {
         sr?.startListening(intent)
     }
 
-    // SpeechRecognizer'ning "biq" tovushini vaqtincha o'chiradi (musiqa oqimi)
+    // SpeechRecognizer'ning "biq" tovushini vaqtincha o'chiradi.
+    // Holatni kuzatamiz: ketma-ket MUTE chaqirilib ovoz butunlay o'chib qolmasin.
     private val am by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
+    private var jim = false
     private fun beepOchir(ochir: Boolean) {
+        if (ochir == jim) return
+        jim = ochir
         try {
             val oqimlar = intArrayOf(android.media.AudioManager.STREAM_MUSIC,
                 android.media.AudioManager.STREAM_NOTIFICATION,
@@ -184,6 +200,7 @@ class MainActivity : android.app.Activity() {
     }
 
     override fun onDestroy() {
+        beepOchir(false)     // chiqishda ovozni albatta tiklaymiz
         tts?.shutdown()
         sr?.destroy()
         super.onDestroy()

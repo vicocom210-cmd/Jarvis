@@ -29,6 +29,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PanelActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/PanelTheme"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="portrait" />
+
         <service
             android:name=".OverlayService"
             android:exported="false"

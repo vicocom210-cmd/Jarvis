@@ -6,8 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -17,7 +15,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.TextView
 import kotlin.math.abs
 
 // Ilovalar ustida suzuvchi shar (overlay). "Jarvis" desangiz yoki sharni bossangiz —
@@ -26,9 +23,9 @@ class OverlayService : Service() {
 
     private lateinit var wm: WindowManager
     private var shar: SharView? = null
-    private var yozuv: TextView? = null
     private var sr: SpeechRecognizer? = null
     private var tinglayapti = false
+    private var panelOchiq = false
     private lateinit var joy: WindowManager.LayoutParams
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -41,7 +38,15 @@ class OverlayService : Service() {
         wakeBoshla()
     }
 
-    override fun onStartCommand(i: Intent?, f: Int, id: Int): Int = START_STICKY
+    override fun onStartCommand(i: Intent?, f: Int, id: Int): Int {
+        if (i?.action == "panel_yopildi") {
+            // Panel yopildi -> yana "Jarvis"ni fonda tinglaymiz
+            panelOchiq = false
+            shar?.holat("kutish")
+            qaytaTingla()
+        }
+        return START_STICKY
+    }
 
     // ----- suzuvchi shar -----
     private fun sharYarat() {
@@ -71,45 +76,13 @@ class OverlayService : Service() {
                         joy.x = bx + dx; joy.y = by + dy
                         wm.updateViewLayout(vv, joy)
                     }
-                    MotionEvent.ACTION_UP -> if (!surildi) ilovaniOch(null)
+                    MotionEvent.ACTION_UP -> if (!surildi) panelniOch(null)
                 }
                 return true
             }
         })
         shar = v
         try { wm.addView(v, joy) } catch (e: Exception) { stopSelf() }
-    }
-
-    // "Jarvis" eshitilganda sharni jonlantirib, "Nima xohlaysiz?" yozuvini ko'rsatamiz
-    private fun uygonKorsat() {
-        shar?.holat("tinglash")
-        shar?.post {
-            if (yozuv == null) {
-                yozuv = TextView(this).apply {
-                    text = "Nima xohlaysiz?"
-                    setTextColor(Color.WHITE)
-                    setPadding(28, 16, 28, 16)
-                    val fon = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE; cornerRadius = 40f
-                        setColor(Color.parseColor("#dd0e1626"))
-                    }
-                    background = fon
-                }
-                val tur = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
-                val yj = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT, tur,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                    android.graphics.PixelFormat.TRANSLUCENT).apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    y = joy.y + (resources.displayMetrics.density * 84).toInt()
-                }
-                try { wm.addView(yozuv, yj) } catch (e: Exception) {}
-            }
-            yozuv?.visibility = View.VISIBLE
-            shar?.postDelayed({ yozuv?.visibility = View.GONE; shar?.holat("kutish") }, 3500)
-        }
     }
 
     // ----- "Jarvis" ni fonda tinglash -----
@@ -126,14 +99,15 @@ class OverlayService : Service() {
                     ?.firstOrNull()?.lowercase() ?: ""
                 if (Regex("jarvis|jarbi|djarvis|жарвис|garvis|charvis").containsMatchIn(matn)) {
                     val buyruq = matn.substringAfter("jarvis", "").trim()
-                    uygonKorsat()
-                    ilovaniOch(buyruq.ifBlank { null })
+                    shar?.holat("tinglash")
+                    panelniOch(buyruq.ifBlank { null })
                 } else qaytaTingla()
             }
             override fun onError(e: Int) { qaytaTingla() }
             override fun onReadyForSpeech(p: Bundle?) {}
             override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(v: Float) {}
+            // ovoz balandligiga qarab shar jonli qimirlaydi (Bixby'dek)
+            override fun onRmsChanged(v: Float) { shar?.pulse(((v + 2f) / 12f)) }
             override fun onBufferReceived(x: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onPartialResults(p: Bundle?) {}
@@ -143,8 +117,13 @@ class OverlayService : Service() {
         try { sr?.startListening(intent); tinglayapti = true } catch (e: Exception) {}
     }
 
+    // Beep ("biq") tovushini o'chiradi. Holatni kuzatamiz — ketma-ket MUTE chaqirilib
+    // ovoz butunlay o'chib qolmasligi uchun (faqat o'zgarishda toglaydi).
     private val am by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
+    private var jim = false
     private fun beepOchir(ochir: Boolean) {
+        if (ochir == jim) return
+        jim = ochir
         try {
             val oqimlar = intArrayOf(android.media.AudioManager.STREAM_MUSIC,
                 android.media.AudioManager.STREAM_NOTIFICATION,
@@ -155,27 +134,34 @@ class OverlayService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun qaytaTingla() {
-        beepOchir(false)
-        shar?.postDelayed({
-            try {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "uz-UZ")
-                }
-                beepOchir(true)
-                sr?.startListening(intent)
-            } catch (e: Exception) {}
-        }, 800)
+    private fun tinglaBoshla() {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "uz-UZ")
+            }
+            sr?.startListening(intent)
+        } catch (e: Exception) {}
     }
 
-    private fun ilovaniOch(buyruq: String?) {
-        val i = Intent(this, MainActivity::class.java).apply {
+    private fun qaytaTingla() {
+        if (panelOchiq) return                 // panel ochiq ekan, fon tinglashi to'xtaydi
+        beepOchir(true)
+        shar?.postDelayed({ if (!panelOchiq) tinglaBoshla() }, 700)
+    }
+
+    // Bixby'dek suzuvchi panelni ochamiz (boshqa ilova ustida shaffof oyna).
+    // Fon tinglashini to'xtatib, ovozni yoqamiz (panel o'zbekcha gapiradi).
+    private fun panelniOch(buyruq: String?) {
+        panelOchiq = true
+        try { sr?.cancel() } catch (e: Exception) {}
+        beepOchir(false)                       // panel ovoz chiqarishi uchun jimlikni yechamiz
+        val i = Intent(this, PanelActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra("uygon", true)
             if (buyruq != null) putExtra("buyruq", buyruq)
         }
-        startActivity(i)
+        try { startActivity(i) } catch (e: Exception) { panelOchiq = false; qaytaTingla() }
     }
 
     // ----- fon xizmati bildirishnomasi -----
@@ -200,7 +186,6 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         try { shar?.let { wm.removeView(it) } } catch (e: Exception) {}
-        try { yozuv?.let { wm.removeView(it) } } catch (e: Exception) {}
         beepOchir(false)
         sr?.destroy()
         super.onDestroy()

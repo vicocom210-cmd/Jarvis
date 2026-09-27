@@ -78,6 +78,22 @@
   .knop{width:100%;padding:15px;border-radius:14px;border:none;font-size:16px;font-weight:700;margin-top:18px;
     color:#08111f;background:linear-gradient(135deg,var(--yorqin),var(--binafsha));}
   .yashir{display:none !important;}
+
+  /* ===== PANEL rejimi (Bixby'dek: boshqa ilova ustida suzuvchi oyna) ===== */
+  body.panel{background:transparent;}
+  body.panel .aura{display:none;}
+  body.panel header,body.panel .stikerlar,body.panel .tablar,body.panel .kirish{display:none;}
+  body.panel .qatlam{justify-content:flex-end;}
+  body.panel #shar{margin:0 auto -10px;}
+  body.panel #holat{margin-bottom:4px;}
+  body.panel .past{padding:0;}
+  body.panel #oqim{flex:0 0 auto;max-height:44vh;
+    background:linear-gradient(180deg,rgba(8,13,26,0),rgba(8,13,26,.94) 22%);
+    border-radius:28px 28px 0 0;
+    padding:16px 18px calc(24px + env(safe-area-inset-bottom));
+    box-shadow:0 -12px 40px rgba(0,0,0,.5);
+    animation:panelKotaril .32s ease;}
+  @keyframes panelKotaril{from{transform:translateY(100%);opacity:.4}}
 </style>
 </head>
 <body>
@@ -177,8 +193,17 @@ const S={ip:localStorage.getItem('ip')||'', pin:localStorage.getItem('pin')||'00
   groq:localStorage.getItem('groq')||'', til:localStorage.getItem('til')||'uz',
   rang:localStorage.getItem('rang')||'kok', kanal:localStorage.getItem('kanal')||''};
 let L=TIL[S.til]||TIL.uz, rejim='suhbat', tarix=[], mikYoniq=true, gapiryapti=false, kutmoqda=false, kutmoqdaTimer=null;
+// Panel rejimi: ilova boshqa ilova ustida suzuvchi oyna sifatida ochilgan (Bixby'dek)
+const panelRejim = /(\?|&)panel/.test(location.search);
+let ishladi=false;      // Kotlin allaqachon uyg'otdimi (ikki marta salom bermaslik uchun)
+let yopTimer=null;
+function panelYopKut(ms){ if(!panelRejim) return; clearTimeout(yopTimer);
+  yopTimer=setTimeout(()=>{ try{Android.panelYop();}catch(e){} }, ms); }
+function panelYopBekor(){ clearTimeout(yopTimer); }
 function kutmoqdaYoq(){ kutmoqda=true; clearTimeout(kutmoqdaTimer);
-  kutmoqdaTimer=setTimeout(()=>{ kutmoqda=false; },8000); }   // 8s ichida gapirmasa, yana "Jarvis" kutamiz
+  kutmoqdaTimer=setTimeout(()=>{ kutmoqda=false;
+    if(panelRejim){ try{Android.panelYop();}catch(e){} }   // gapirmadi -> panel yopiladi
+  },8000); }   // 8s ichida gapirmasa, yana "Jarvis" kutamiz
 
 function tilQoy(t){ S.til=t; L=TIL[t]||TIL.uz;
   document.getElementById('t-suhbat').textContent=L.suhbat;
@@ -232,14 +257,16 @@ let joriyHolat='kutish';
 function holatYoz(t,jonli){ const h=document.getElementById('holat'); h.textContent=t; h.classList.toggle('jonli',!!jonli); }
 
 // ---------- OVOZ: chinakam o'zbek (Google TTS) ----------
-let audio=null;
+let audio=null, oxirgiJavob=false;
 function gapir(t){
   try{ if(audio){audio.pause();} }catch(e){}
   gapiryapti=true; setHolat('gapirish');
   const boluk=t.match(/[^.!?]+[.!?]?/g)||[t];   // gaplarga bo'lamiz (Google TTS 200 belgigacha)
   let i=0;
   function keyingi(){
-    if(i>=boluk.length){ gapiryapti=false; setHolat('kutish'); davomTingla(); return; }
+    if(i>=boluk.length){ gapiryapti=false; setHolat('kutish'); davomTingla();
+      if(panelRejim && oxirgiJavob){ oxirgiJavob=false; panelYopKut(5000); }  // javob aytilgach panel yopiladi
+      return; }
     const q=encodeURIComponent(boluk[i].trim().slice(0,190)); i++;
     if(!q){ keyingi(); return; }
     audio=new Audio('https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl='+L.tl+'&q='+q);
@@ -255,7 +282,7 @@ function mikTogla(){ mikYoniq=!mikYoniq;
   document.getElementById('mik').className='mik '+(mikYoniq?'ochiq':'yopiq');
   if(mikYoniq) davomTingla(); else { try{Android.gapir('');}catch(e){} holatYoz(L.kutish); } }
 function davomTingla(){ if(mikYoniq && !gapiryapti) setTimeout(()=>{ try{Android.tingla();}catch(e){} },300); }
-window.tinglashBoshlandi=()=>{ document.getElementById('mik').classList.add('tinglayapti'); holatYoz(L.tingla,true); setHolat('tinglash'); };
+window.tinglashBoshlandi=()=>{ panelYopBekor(); document.getElementById('mik').classList.add('tinglayapti'); holatYoz(L.tingla,true); setHolat('tinglash'); };
 window.tinglashTugadi=()=>{ document.getElementById('mik').classList.remove('tinglayapti');
   if(!gapiryapti){ holatYoz(L.kutish); setHolat('kutish'); davomTingla(); } };
 window.natija=(t)=>{ document.getElementById('mik').classList.remove('tinglayapti'); ishlash(t); };
@@ -265,11 +292,12 @@ function chaqiruvmi(s){ s=s.toLowerCase();
 
 function ishlash(t){
   t=(t||'').trim(); if(!t){ davomTingla(); return; }
-  if(kutmoqda){ kutmoqda=false; clearTimeout(kutmoqdaTimer); pufak('men',t); yurgiz(t); return; }   // "Jarvis" dan keyingi buyruq
+  if(kutmoqda){ kutmoqda=false; clearTimeout(kutmoqdaTimer); panelYopBekor(); ishladi=true; pufak('men',t); yurgiz(t); return; }   // "Jarvis" dan keyingi buyruq
   // "jarvis" so'zini qidiramiz
   if(chaqiruvmi(t)){
     const sozlar=t.split(/\s+/); const idx=sozlar.findIndex(w=>chaqiruvmi(w));
     const qolgan=sozlar.slice(idx+1).join(' ').trim();
+    panelYopBekor(); ishladi=true;
     if(qolgan){ pufak('men',qolgan); yurgiz(qolgan); }               // "jarvis youtube och"
     else { pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqdaYoq(); } // faqat "jarvis"
   } else { davomTingla(); }   // "jarvis" yo'q — e'tibor bermaymiz (fon shovqini)
@@ -277,9 +305,9 @@ function ishlash(t){
 
 function stikerYubor(t){ tabTanla('suhbat'); pufak('men',t); yurgiz(t); }
 // Suzuvchi shardan chaqirilganda
-window.uygon=function(){ pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqdaYoq(); };
+window.uygon=function(){ ishladi=true; panelYopBekor(); pufak('jarvis',L.labbay); gapir(L.labbay); kutmoqdaYoq(); };
 window.uygonBuyruq=function(t){ t=(t||'').trim(); if(!t){ window.uygon(); return; }
-  tabTanla('suhbat'); pufak('men',t); yurgiz(t); };
+  ishladi=true; panelYopBekor(); tabTanla('suhbat'); pufak('men',t); yurgiz(t); };
 function yubor(){ const t=matn.value.trim(); if(!t) return; matn.value=''; pufak('men',t); yurgiz(t); }
 function yurgiz(t){ if(rejim==='kompyuter') kompyuterGa(t); else suhbatJavob(t); }
 
@@ -333,7 +361,7 @@ function suhbatJavob(t){
       if(j){ tarix.push({role:'user',content:t}); tarix.push({role:'assistant',content:j.trim()}); javobBer(j.trim()); }
       else javobBer('⚠'); }).catch(()=>{ kut.remove(); javobBer('⚠'); });
 }
-function javobBer(t){ pufak('jarvis',t); gapir(t); }
+function javobBer(t){ oxirgiJavob=true; pufak('jarvis',t); gapir(t); }
 
 // ---------- shar ----------
 const cvs=document.getElementById('shar'), ctx=cvs.getContext('2d'), W=240, H=200;
@@ -361,9 +389,20 @@ function chiz(v){
 // boshlash
 tilQoy(S.til); rangQoy(S.rang); tabTanla('suhbat');
 requestAnimationFrame(chiz);
-pufak('jarvis',L.salom);
-setTimeout(davomTingla,1200);   // ochilgach o'zi tinglay boshlaydi
 mqttUlan();                      // internet ulanishni tayyorlaymiz
+if(panelRejim){
+  document.body.classList.add('panel');
+  // Kotlin uyg'otmasa (masalan sharni bosib ochsa), o'zimiz salom beramiz
+  setTimeout(()=>{ if(!ishladi) window.uygon(); }, 1500);
+  // Xira (bo'sh) joyga tegilsa panel yopiladi (Bixby'dek)
+  document.body.addEventListener('click',(e)=>{
+    if(document.getElementById('oqim').contains(e.target)) return;
+    try{Android.panelYop();}catch(err){}
+  });
+} else {
+  pufak('jarvis',L.salom);
+  setTimeout(davomTingla,1200);   // ochilgach o'zi tinglay boshlaydi
+}
 </script>
 </body>
 </html>
