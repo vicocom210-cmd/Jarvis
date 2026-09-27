@@ -165,7 +165,10 @@ class MainActivity : android.app.Activity() {
     private val am by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
     private fun beepOchir(ochir: Boolean) {
         try {
-            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+            val oqimlar = intArrayOf(android.media.AudioManager.STREAM_MUSIC,
+                android.media.AudioManager.STREAM_NOTIFICATION,
+                android.media.AudioManager.STREAM_SYSTEM)
+            for (o in oqimlar) am.adjustStreamVolume(o,
                 if (ochir) android.media.AudioManager.ADJUST_MUTE
                 else android.media.AudioManager.ADJUST_UNMUTE, 0)
         } catch (e: Exception) {}

@@ -25,7 +25,8 @@ import kotlin.math.abs
 class OverlayService : Service() {
 
     private lateinit var wm: WindowManager
-    private var shar: TextView? = null
+    private var shar: SharView? = null
+    private var yozuv: TextView? = null
     private var sr: SpeechRecognizer? = null
     private var tinglayapti = false
     private lateinit var joy: WindowManager.LayoutParams
@@ -44,19 +45,9 @@ class OverlayService : Service() {
 
     // ----- suzuvchi shar -----
     private fun sharYarat() {
-        val v = TextView(this).apply {
-            text = "J"
-            setTextColor(Color.WHITE)
-            textSize = 22f
-            gravity = Gravity.CENTER
-            val fon = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                colors = intArrayOf(Color.parseColor("#4bd0ff"), Color.parseColor("#8a6bff"))
-                gradientType = GradientDrawable.LINEAR_GRADIENT
-            }
-            background = fon
-        }
-        val olcham = (resources.displayMetrics.density * 58).toInt()
+        val v = SharView(this)
+        v.holat("kutish")
+        val olcham = (resources.displayMetrics.density * 72).toInt()
         val tur = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
@@ -89,6 +80,38 @@ class OverlayService : Service() {
         try { wm.addView(v, joy) } catch (e: Exception) { stopSelf() }
     }
 
+    // "Jarvis" eshitilganda sharni jonlantirib, "Nima xohlaysiz?" yozuvini ko'rsatamiz
+    private fun uygonKorsat() {
+        shar?.holat("tinglash")
+        shar?.post {
+            if (yozuv == null) {
+                yozuv = TextView(this).apply {
+                    text = "Nima xohlaysiz?"
+                    setTextColor(Color.WHITE)
+                    setPadding(28, 16, 28, 16)
+                    val fon = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE; cornerRadius = 40f
+                        setColor(Color.parseColor("#dd0e1626"))
+                    }
+                    background = fon
+                }
+                val tur = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+                val yj = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT, tur,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    android.graphics.PixelFormat.TRANSLUCENT).apply {
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    y = joy.y + (resources.displayMetrics.density * 84).toInt()
+                }
+                try { wm.addView(yozuv, yj) } catch (e: Exception) {}
+            }
+            yozuv?.visibility = View.VISIBLE
+            shar?.postDelayed({ yozuv?.visibility = View.GONE; shar?.holat("kutish") }, 3500)
+        }
+    }
+
     // ----- "Jarvis" ni fonda tinglash -----
     private fun wakeBoshla() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return
@@ -103,6 +126,7 @@ class OverlayService : Service() {
                     ?.firstOrNull()?.lowercase() ?: ""
                 if (Regex("jarvis|jarbi|djarvis|жарвис|garvis|charvis").containsMatchIn(matn)) {
                     val buyruq = matn.substringAfter("jarvis", "").trim()
+                    uygonKorsat()
                     ilovaniOch(buyruq.ifBlank { null })
                 } else qaytaTingla()
             }
@@ -122,7 +146,10 @@ class OverlayService : Service() {
     private val am by lazy { getSystemService(AUDIO_SERVICE) as android.media.AudioManager }
     private fun beepOchir(ochir: Boolean) {
         try {
-            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+            val oqimlar = intArrayOf(android.media.AudioManager.STREAM_MUSIC,
+                android.media.AudioManager.STREAM_NOTIFICATION,
+                android.media.AudioManager.STREAM_SYSTEM)
+            for (o in oqimlar) am.adjustStreamVolume(o,
                 if (ochir) android.media.AudioManager.ADJUST_MUTE
                 else android.media.AudioManager.ADJUST_UNMUTE, 0)
         } catch (e: Exception) {}
@@ -173,6 +200,8 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         try { shar?.let { wm.removeView(it) } } catch (e: Exception) {}
+        try { yozuv?.let { wm.removeView(it) } } catch (e: Exception) {}
+        beepOchir(false)
         sr?.destroy()
         super.onDestroy()
     }
