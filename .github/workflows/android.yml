@@ -1,0 +1,42 @@
+name: Jarvis telefon APK
+
+# APK'ni GitHub o'zi yasaydi. Ishga tushirish: GitHub sahifasida Actions > "Jarvis telefon APK" > Run workflow.
+# Yoki telefon_ilova/ ichida biror narsa o'zgarsa, avtomatik ishlaydi.
+on:
+  push:
+    paths:
+      - "telefon_ilova/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+jobs:
+  qurish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodni olish
+        uses: actions/checkout@v4
+
+      - name: Java (JDK 17) o'rnatish
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK o'rnatish
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle tayyorlash
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: APK yasash
+        working-directory: telefon_ilova
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: APK'ni yuklab qo'yish
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-APK
+          path: telefon_ilova/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

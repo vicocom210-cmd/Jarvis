@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Jarvis</title>
+<style>
+  :root { --yorqin:#46cdff; --xira:#1e5ad2; --fon:#050912; --panel:#0e1626; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--fon); color:#e8eef7;
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; overflow:hidden; user-select:none; }
+  #shar { display:block; margin:0 auto; }
+  #holat { text-align:center; color:var(--yorqin); font-size:14px; margin-top:4px; min-height:18px; }
+  #suhbat { text-align:center; padding:6px 18px; min-height:60px; }
+  #siz { color:#aebdd6; font-size:15px; }
+  #javob { color:var(--yorqin); font-size:16px; margin-top:4px; line-height:1.35; }
+  .tablar { display:flex; gap:8px; padding:0 14px; }
+  .tab { flex:1; text-align:center; padding:10px; border-radius:12px; background:var(--panel);
+    color:#9fb2d0; font-size:14px; border:1px solid #22344f; }
+  .tab.faol { color:#fff; border-color:var(--yorqin); background:#132135; }
+  #kirish { display:flex; gap:8px; padding:12px 14px; }
+  #matn { flex:1; padding:14px 16px; border-radius:26px; border:1px solid #2a3d5c;
+    background:#131b2b; color:#eaf1fb; font-size:16px; outline:none; }
+  .yumaloq { width:52px; height:52px; border-radius:50%; border:none; font-size:22px;
+    background:var(--yorqin); color:#08111f; display:flex; align-items:center; justify-content:center; }
+  .yumaloq:active { transform:scale(0.92); }
+  #menyu { padding:4px 14px 14px; overflow-y:auto; }
+  .karta { background:var(--panel); border:1px solid #22344f; border-radius:14px; padding:14px;
+    margin-bottom:10px; font-size:15px; display:flex; align-items:center; gap:12px; }
+  .karta:active { background:#152238; }
+  .karta .belgi { font-size:22px; }
+  .sozlama { padding:14px; }
+  .sozlama label { display:block; color:#9fb2d0; font-size:13px; margin:10px 0 4px; }
+  .sozlama input { width:100%; padding:12px; border-radius:10px; border:1px solid #2a3d5c;
+    background:#131b2b; color:#eaf1fb; font-size:15px; }
+  .tugma { width:100%; padding:14px; border-radius:12px; border:none; background:var(--yorqin);
+    color:#08111f; font-size:16px; font-weight:bold; margin-top:14px; }
+  .gear { position:absolute; top:10px; right:14px; font-size:22px; color:#8aa0c0; }
+  .yashir { display:none !important; }
+</style>
+</head>
+<body>
+  <div class="gear" onclick="sozlamaOch()">⚙</div>
+  <canvas id="shar" width="300" height="300"></canvas>
+  <div id="holat">Kutish rejimi</div>
+  <div id="suhbat"><div id="siz"></div><div id="javob">Salom! Men Jarvisman.</div></div>
+
+  <div class="tablar">
+    <div class="tab faol" id="tab-suhbat" onclick="tabTanla('suhbat')">💬 Suhbat</div>
+    <div class="tab" id="tab-kompyuter" onclick="tabTanla('kompyuter')">💻 Kompyuter</div>
+  </div>
+
+  <div id="menyu" class="yashir">
+    <div class="karta" onclick="kompyuterGa('youtubeni och')"><span class="belgi">▶️</span> YouTube ochish</div>
+    <div class="karta" onclick="kompyuterGa('musiqa qo\'y')"><span class="belgi">🎵</span> Musiqa qo'yish</div>
+    <div class="karta" onclick="kompyuterGa('ekran rasmini yubor')"><span class="belgi">🖥️</span> Ekran rasmini olish</div>
+    <div class="karta" onclick="kompyuterGa('kameradan surat ol')"><span class="belgi">📷</span> Kameradan surat</div>
+    <div class="karta" onclick="kompyuterGa('kompyuterni qulfla')"><span class="belgi">🔒</span> Kompyuterni qulflash</div>
+    <div class="karta" onclick="kompyuterGa('ovozni oshir')"><span class="belgi">🔊</span> Ovozni oshirish</div>
+    <div class="karta" onclick="kompyuterGa('yuklamalardagi rasmlarni tashla')"><span class="belgi">🖼️</span> Rasmlarni yuborish</div>
+    <div class="karta" onclick="kompyuterGa('soat necha')"><span class="belgi">🕐</span> Soatni so'rash</div>
+  </div>
+
+  <div id="sozlama" class="sozlama yashir">
+    <label>Kompyuter IP manzili (Jarvis ekranida ko'rsatiladi)</label>
+    <input id="ip" placeholder="masalan: 192.168.1.5">
+    <label>PIN kod</label>
+    <input id="pin" placeholder="0000" inputmode="numeric">
+    <label>Groq API kaliti (ixtiyoriy — telefon o'zi javob berishi uchun)</label>
+    <input id="groq" placeholder="gsk_...">
+    <button class="tugma" onclick="sozlamaSaqla()">Saqlash</button>
+    <button class="tugma" style="background:#22344f;color:#cfe0f5" onclick="sozlamaYop()">Yopish</button>
+  </div>
+
+  <div id="kirish">
+    <input id="matn" placeholder="Buyruq yozing..." onkeydown="if(event.key==='Enter')yubor()">
+    <button class="yumaloq" onclick="mikrofon()">🎤</button>
+  </div>
+
+<script>
+// ---------- sozlamalar (telefonda saqlanadi) ----------
+const S = {
+  ip: localStorage.getItem('ip') || '',
+  pin: localStorage.getItem('pin') || '0000',
+  groq: localStorage.getItem('groq') || '',
+};
+let rejim = 'suhbat';          // 'suhbat' (telefon AI) yoki 'kompyuter'
+let tarix = [];                // AI suhbat xotirasi
+
+function tabTanla(t) {
+  rejim = t;
+  document.getElementById('tab-suhbat').classList.toggle('faol', t==='suhbat');
+  document.getElementById('tab-kompyuter').classList.toggle('faol', t==='kompyuter');
+  document.getElementById('menyu').classList.toggle('yashir', t!=='kompyuter');
+  document.getElementById('matn').placeholder = t==='kompyuter'
+    ? "Kompyuterga buyruq..." : "Savol yoki gap yozing...";
+}
+function sozlamaOch() {
+  document.getElementById('ip').value = S.ip;
+  document.getElementById('pin').value = S.pin;
+  document.getElementById('groq').value = S.groq;
+  document.getElementById('sozlama').classList.remove('yashir');
+}
+function sozlamaYop(){ document.getElementById('sozlama').classList.add('yashir'); }
+function sozlamaSaqla() {
+  S.ip = document.getElementById('ip').value.trim();
+  S.pin = document.getElementById('pin').value.trim() || '0000';
+  S.groq = document.getElementById('groq').value.trim();
+  localStorage.setItem('ip', S.ip);
+  localStorage.setItem('pin', S.pin);
+  localStorage.setItem('groq', S.groq);
+  sozlamaYop();
+  korsat('', 'Sozlamalar saqlandi.');
+}
+
+// ---------- ko'rinish ----------
+function korsat(siz, javob) {
+  if (siz !== null) document.getElementById('siz').textContent = siz || '';
+  if (javob !== undefined) document.getElementById('javob').textContent = javob || '';
+}
+function holatYoz(t){ document.getElementById('holat').textContent = t; }
+
+// ---------- ovoz ----------
+function gapir(matn) {
+  try { Android.gapir(matn); } catch(e) {}
+}
+function mikrofon() {
+  holatYoz('Tinglayapman...');
+  setHolat('tinglash');
+  try { Android.tingla(); } catch(e){ korsat(null,'Mikrofon ishlamadi.'); }
+}
+// Kotlin shu funksiyalarni chaqiradi:
+window.tinglashBoshlandi = function(){ holatYoz('Tinglayapman...'); setHolat('tinglash'); };
+window.tinglashTugadi = function(){ holatYoz('Kutish rejimi'); setHolat('kutish'); };
+window.natija = function(matn) {
+  document.getElementById('matn').value = matn;
+  yubor();
+};
+
+// ---------- buyruq yuborish ----------
+function yubor() {
+  const el = document.getElementById('matn');
+  const matn = el.value.trim();
+  if (!matn) return;
+  el.value = '';
+  korsat(matn, '...');
+  if (rejim === 'kompyuter') kompyuterGa(matn);
+  else suhbatJavob(matn);
+}
+
+function kompyuterGa(matn) {
+  korsat(matn, 'Kompyuterga yuboryapman...');
+  setHolat('oylash');
+  if (!S.ip) { javobBer('Avval ⚙ sozlamalarda kompyuter IP manzilini kiriting.'); return; }
+  fetch('http://' + S.ip + ':8770/buyruq', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({pin:S.pin, matn:matn})
+  }).then(r=>r.json()).then(d=>{
+    javobBer(d.ok ? (d.javob||'Bajarildi.') : ('Xato: '+(d.xato||'')));
+  }).catch(e=>{
+    javobBer('Kompyuterga ulanolmadim. Bir Wi-Fi\'da ekaningizni va IP\'ni tekshiring.');
+  });
+}
+
+// ---------- telefon AI (Groq) ----------
+function suhbatJavob(matn) {
+  setHolat('oylash'); holatYoz('O\'ylayapman...');
+  if (!S.groq) {
+    javobBer('Men bilan suhbatlashish uchun ⚙ sozlamalarda bepul Groq kalitini kiriting. '
+      + 'Yoki 💻 Kompyuter bo\'limidan kompyuterni boshqaring.');
+    return;
+  }
+  const xabarlar = [{role:'system', content:
+    'Sen Jarvis ismli o\'zbek ovozli yordamchisan. Doim o\'zbek tilida, samimiy, qisqa (1-3 gap) javob ber.'}];
+  tarix.slice(-6).forEach(m=>xabarlar.push(m));
+  xabarlar.push({role:'user', content:matn});
+  fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.groq},
+    body: JSON.stringify({model:'llama-3.3-70b-versatile', messages:xabarlar, max_tokens:400})
+  }).then(r=>r.json()).then(d=>{
+    const j = d.choices && d.choices[0] && d.choices[0].message.content;
+    if (j) { tarix.push({role:'user',content:matn}); tarix.push({role:'assistant',content:j});
+      javobBer(j.trim()); }
+    else javobBer('Javob ololmadim. Kalitni tekshiring.');
+  }).catch(e=> javobBer('Internet bilan muammo bor.'));
+}
+
+function javobBer(matn) {
+  korsat(null, matn);
+  holatYoz('Kutish rejimi');
+  setHolat('gapirish');
+  gapir(matn);
+  setTimeout(()=>setHolat('kutish'), 1500);
+}
+
+// ---------- zarrachalardan shar (Fibonacci sfera) ----------
+const cvs = document.getElementById('shar'), ctx = cvs.getContext('2d');
+const N = 900, nuqtalar = [];
+for (let i=0;i<N;i++){
+  const y = 1 - 2*(i+0.5)/N, r = Math.sqrt(1-y*y), a = Math.PI*(3-Math.sqrt(5))*i;
+  nuqtalar.push([Math.cos(a)*r, y, Math.sin(a)*r]);
+}
+let holat = 'kutish', rang=[70,150,230], maqsadRang=[70,150,230],
+    kattalik=0.8, maqsadKat=0.8, tezlik=0.3, burchak=0;
+const HOLATLAR = {
+  kutish:{rang:[40,95,210],kat:0.8,tez:0.3},
+  tinglash:{rang:[70,205,255],kat:1.0,tez:0.9},
+  oylash:{rang:[60,150,255],kat:0.92,tez:1.5},
+  gapirish:{rang:[90,215,255],kat:0.95,tez:0.6},
+};
+function setHolat(h){ if(HOLATLAR[h]){ holat=h; maqsadRang=HOLATLAR[h].rang;
+  maqsadKat=HOLATLAR[h].kat; tezlik=HOLATLAR[h].tez; } }
+
+function chiz(vaqt){
+  ctx.clearRect(0,0,300,300);
+  for(let i=0;i<3;i++) rang[i]+=(maqsadRang[i]-rang[i])*0.08;
+  kattalik += (maqsadKat-kattalik)*0.08;
+  burchak += tezlik*0.015;
+  const cx=150, cy=150, R=95*kattalik, ca=Math.cos(burchak), sa=Math.sin(burchak),
+        ce=Math.cos(0.4), se=Math.sin(0.4);
+  const nafas = 1 + 0.03*Math.sin(vaqt*0.002);
+  for(const [x,y,z] of nuqtalar){
+    const x2=x*ca+z*sa, z2=z*ca-x*sa, y2=y*ce-z2*se, z3=y*se+z2*ce;
+    const ch=(z3+1.2)/2.4, k=nafas;
+    const px=cx+x2*R*k, py=cy+y2*R*k, o=0.25+ch*0.75;
+    const s=ch<0.5?1.1:(ch<0.85?1.6:2.2);
+    ctx.fillStyle='rgba('+(rang[0]|0)+','+(rang[1]|0)+','+(rang[2]|0)+','+o+')';
+    ctx.beginPath(); ctx.arc(px,py,s,0,6.29); ctx.fill();
+  }
+  requestAnimationFrame(chiz);
+}
+requestAnimationFrame(chiz);
+tabTanla('suhbat');
+</script>
+</body>
+</html>
