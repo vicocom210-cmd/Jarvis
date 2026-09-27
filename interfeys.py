@@ -175,6 +175,17 @@ def shaffoflik_ber(qiymat):
         ctypes.windll.user32.SetLayeredWindowAttributes(_hwnd(), 0, int(qiymat), 0x1 | 0x2)
 
 
+def oyna_korinishi(korinsin):
+    """Oynani vaqtincha yashiradi yoki qayta ko'rsatadi (fokusni o'g'irlamasdan)."""
+    if os.name != "nt" or not _hwnd():
+        return
+    import ctypes
+    u32 = ctypes.windll.user32
+    u32.ShowWindow(_hwnd(), 4 if korinsin else 0)          # 4 = SW_SHOWNOACTIVATE, 0 = SW_HIDE
+    if korinsin:
+        u32.SetWindowPos(_hwnd(), -1, 0, 0, 0, 0, 0x2 | 0x1 | 0x10)   # doim ustida, fokussiz
+
+
 def ish_maydoni():
     """Ekranning vazifalar paneli (taskbar)siz qismi: (chap, tepa, o'ng, past)."""
     if os.name == "nt":
@@ -508,6 +519,8 @@ class Oyna:
         self.tugmalar = {}                # id -> Tugma (animatsiya holati saqlanadi)
         self.chizilgan = []               # shu kadrda chizilgan tugmalar id'lari
         self.sichqoncha = (0, 0)
+        self.yashirin_gacha = 0           # shu vaqtgacha oyna yashirin
+        self.yashirin = False
         self.joylash()
 
     def _ikonka(self):
@@ -624,6 +637,11 @@ class Oyna:
             elif tur == "sozlamalarni_yop":
                 self.sozlama_ochiq = False
                 self.faol = None
+            elif tur == "yashir":                    # tugma bosilayotganda xalaqit bermasin
+                oyna_korinishi(False)
+                self.yashirin_gacha = time.time() + xabar[1]
+            elif tur == "korsat":
+                self.yashirin_gacha = 0
             elif tur == "yopil":
                 self.ishlayapti = False
 
@@ -755,6 +773,11 @@ class Oyna:
 
     # ----- holat va animatsiya -----
     def holatni_yangila(self, dt):
+        yashirin = time.time() < self.yashirin_gacha
+        if yashirin != self.yashirin:
+            self.yashirin = yashirin
+            oyna_korinishi(not yashirin)
+
         # Sozlamalar ochiq — butun ekran; faol bo'lsa — markazda katta;
         # 1.5 soniya kutish rejimida tursa — burchakka qaytadi
         if self.sozlama_ochiq or self.soz_t > 0.01:

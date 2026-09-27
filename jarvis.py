@@ -33,6 +33,7 @@ import pyperclip
 import speech_recognition as sr
 
 import bilim
+import boshqaruv
 import kompyuter
 import sozlamalar
 import telegram_bot
@@ -357,31 +358,45 @@ def telegramga_yubor(gap):
         return
     tur = next((t for t, (_, sozlar, _) in FAYL_TURLARI.items() if bor(gap, *sozlar)), None)
     papka = next((papka_yoli(p) for sozlar, p in PAPKA_SOZLARI if bor(gap, *sozlar)), None)
-    if papka is None and tur is None:
-        # aniq fayl nomi: "hisobot faylini yubor"
-        nom = " ".join(s for s in fayl_nomi(gap).split()
-                       if not s.startswith(("yubor", "tashla", "jo'nat", "telegram")))
-        natijalar = [y for y in kompyuter.fayl_qidir(nom) if os.path.isfile(y)] if nom else []
-        if not natijalar:
-            gapir(f"{nom or 'Bu'} degan fayl topilmadi.")
+    disk, nomlar = kompyuter.yol_qismlari(gap)
+    if tur:                                     # "rasmlar", "videolar" — nom emas, fayl turi
+        nomlar = [n for n in nomlar if not bor(n, *FAYL_TURLARI[tur][1])]
+    if papka is not None and not disk:          # "yuklamalardagi" — tanish papka, nom emas
+        nomlar = []
+
+    if disk or nomlar:
+        # aniq yo'l: "C diskdagi games papkasidan cs 1.6 ni", "hisobot faylini"
+        yol, topilmadi = kompyuter.yol_top(disk, nomlar) if nomlar else (disk, None)
+        if not yol:
+            gapir(f"{topilmadi} topilmadi." + (f" {disk} diskida qidirdim." if disk else ""))
             return
-        fayllar, jami = natijalar[:1], 1
-    else:
-        if papka is None:
-            papka = papka_yoli(FAYL_TURLARI[tur][2])
-        kengaytmalar = FAYL_TURLARI[tur][0] if tur else None
-        try:
-            fayllar = [os.path.join(papka, f) for f in os.listdir(papka)
-                       if os.path.isfile(os.path.join(papka, f))
-                       and (not kengaytmalar or os.path.splitext(f)[1].lower() in kengaytmalar)]
-        except OSError:
-            fayllar = []
-        fayllar.sort(key=os.path.getmtime, reverse=True)       # eng yangilari birinchi
-        jami = len(fayllar)
-        fayllar = fayllar[:20]
-        if not fayllar:
-            gapir(f"{os.path.basename(papka)} papkasida mos fayl topilmadi.")
+        if os.path.isfile(yol):
+            gapir(f"{os.path.basename(yol)} ni yuboryapman.")
+            fonda(_telegramga_yubor_fonda, [yol])
             return
+        if not tur:                             # papkaning o'zi so'raldi — ZIP qilib yuboramiz
+            papkani_yubor(yol)
+            return
+        papka = yol
+    elif papka is None and tur:
+        papka = papka_yoli(FAYL_TURLARI[tur][2])
+    elif papka is None:
+        gapir("Qaysi fayl yoki papkani yuboray? Masalan: yuklamalardagi rasmlarni tashla.")
+        return
+
+    kengaytmalar = FAYL_TURLARI[tur][0] if tur else None
+    try:
+        fayllar = [os.path.join(papka, f) for f in os.listdir(papka)
+                   if os.path.isfile(os.path.join(papka, f))
+                   and (not kengaytmalar or os.path.splitext(f)[1].lower() in kengaytmalar)]
+    except OSError:
+        fayllar = []
+    fayllar.sort(key=os.path.getmtime, reverse=True)       # eng yangilari birinchi
+    jami = len(fayllar)
+    fayllar = fayllar[:20]
+    if not fayllar:
+        gapir(f"{os.path.basename(papka.rstrip(os.sep)) or papka} papkasida mos fayl topilmadi.")
+        return
     if jami > len(fayllar):
         gapir(f"{jami} ta fayl topildi. Eng yangi {len(fayllar)} tasini yuboryapman.")
     else:
@@ -389,9 +404,125 @@ def telegramga_yubor(gap):
     fonda(_telegramga_yubor_fonda, fayllar)
 
 
+def papkani_yubor(papka):
+    """Papkani ZIP qilib yuboradi (Telegram botlari 50 MB gacha yubora oladi)."""
+    nom = os.path.basename(papka.rstrip(os.sep)) or papka
+    hajm = kompyuter.papka_hajmi(papka)
+    if hajm > 3 * telegram_bot.MAX_FAYL:          # siqilganda ham 50 MB ga tushmaydi
+        gapir(f"{nom} papkasi {kompyuter.hajm_matn(hajm)}. Telegram bot 50 megabaytdan "
+              "katta faylni yubora olmaydi.")
+        return
+    gapir(f"{nom} papkasini ZIP qilib yuboryapman.")
+    fonda(_papkani_yubor_fonda, papka, nom)
+
+
+def _papkani_yubor_fonda(papka, nom):
+    try:
+        zip_yol = kompyuter.papkani_zip(papka)
+    except OSError as xato:
+        gapir(f"ZIP qilib bo'lmadi: {xato}")
+        return
+    if os.path.getsize(zip_yol) > telegram_bot.MAX_FAYL:
+        gapir(f"{nom} ZIP qilingandan keyin ham {kompyuter.hajm_matn(os.path.getsize(zip_yol))}. "
+              "Telegram bot 50 megabaytdan kattasini yubora olmaydi.")
+    else:
+        _telegramga_yubor_fonda([zip_yol])
+    try:
+        os.remove(zip_yol)
+    except OSError:
+        pass
+
+
 def _telegramga_yubor_fonda(fayllar):
     yuborildi = sum(1 for yol in fayllar if bot and bot.fayl_yubor(yol))
     gapir(f"{yuborildi} ta fayl yuborildi." if yuborildi else "Fayllarni yuborib bo'lmadi.")
+
+
+# ---------- 2.3. ILOVA ICHIDA ISHLASH ----------
+BOS_SOZLARI = {"bos", "bosing", "bosgin", "bosib", "bosvor", "bosvoring", "bosing", "click",
+               "klik", "нажми", "нажмите"}
+OLDINGI_ORTIQCHA = {"jarvis", "menga", "iltimos", "o'sha", "osha", "shu", "ilovadagi",
+                    "oynadagi", "dasturdagi", "ekrandagi", "o'yindagi", "ichidagi", "ga", "ni", "ning"}
+
+
+def bosish_buyrugimi(gap):
+    sozlar = gap.split()
+    return any(s in BOS_SOZLARI for s in sozlar) and (bor(gap, "tugma", "knopka", "кнопк", "button")
+                                                      or len(sozlar) <= 6)
+
+
+def tugma_nomi(gap):
+    """'enter the game tugmasini bos' -> 'enter the game'"""
+    sozlar = [s.strip('"\'«»“”,.') for s in gap.split()]
+    for i, s in enumerate(sozlar):
+        if s.startswith(("tugma", "knopka", "кнопк", "button")) or s in BOS_SOZLARI:
+            sozlar = sozlar[:i]
+            break
+    sozlar = [s for s in sozlar if s not in OLDINGI_ORTIQCHA]
+    if sozlar:                                      # "startni" -> "start", "playga" -> "play"
+        for qoshimcha in ("ning", "ni", "ga"):
+            if len(sozlar[-1]) > len(qoshimcha) + 2 and sozlar[-1].endswith(qoshimcha):
+                sozlar[-1] = sozlar[-1][:-len(qoshimcha)]
+                break
+    return " ".join(sozlar).strip()
+
+
+def jarvisni_yashir(soniya):
+    """Jarvis oynasi bosiladigan tugmani yopib qolmasin — bir necha soniya yashirinadi."""
+    ui_navbat.put(("yashir", soniya))
+    time.sleep(0.5)
+
+
+def telegramga_ekran():
+    if javob_telegramga and bot:
+        yol = os.path.join(tempfile.gettempdir(), "jarvis_ekran.png")
+        try:
+            pyautogui.screenshot(yol)
+            bot.fayl_yubor(yol, "Ekran hozir shunday")
+        except Exception:
+            pass
+
+
+def tugma_bos(gap):
+    nom = tugma_nomi(gap)
+    if not nom:
+        gapir("Qaysi tugmani bosay? Masalan: enter the game tugmasini bos.")
+        return
+    jarvisni_yashir(6)
+    natija = boshqaruv.tugmani_bos(nom)
+    time.sleep(1)
+    if natija:
+        gapir(f"{nom} bosildi.")
+    else:
+        gapir(f"Ekranda {nom} degan tugmani topa olmadim.")
+    telegramga_ekran()                              # telefonda nima bo'lganini ko'rasiz
+    ui_navbat.put(("korsat",))
+
+
+def matn_yozish(gap):
+    """'salom dunyo deb yoz' -> faol maydonga 'salom dunyo' yozadi."""
+    sozlar = gap.split()
+    i = sozlar.index("deb")
+    matn = " ".join(s for s in sozlar[:i] if s != "jarvis")
+    if not matn:
+        gapir("Nima deb yozay?")
+        return
+    jarvisni_yashir(3)
+    boshqaruv.matn_yoz(matn)
+    ui_navbat.put(("korsat",))
+    gapir("Yozildi.")
+
+
+def oynani_yop():
+    if boshqaruv.faol_oyna_nomi() in ("", "Jarvis"):
+        gapir("Avval yopiladigan oynani tanlang, keyin ayting.")
+        return
+    nom = boshqaruv.faol_oyna_nomi()
+    if tasdiqla(f"{nom} oynasini yopaymi? Saqlanmagan narsalar yo'qolishi mumkin."):
+        pyautogui.hotkey("alt", "f4")
+        gapir("Yopildi.")
+    else:
+        gapir("Bekor qilindi.")
 
 
 def ekran_rasmi():
@@ -911,6 +1042,8 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
                 "Fayl qayerdaligini topaman, masalan: hisobot faylini top. "
                 "Savollarga Vikipediyadan javob beraman, masalan: Amir Temur kim. "
                 "Sozlamalar deng: ovozim, tilim va rangimni o'zgartirasiz. "
+                "Ilova ichida tugmani bosaman, masalan: enter the game tugmasini bos. "
+                "Matn yozaman, masalan: salom deb yoz. "
                 "Telegram bot orqali telefondan ham boshqarasiz: fayl va rasmlarni yuboraman, "
                 "ekran rasmini olaman. "
                 "Gapimni bo'lish uchun shunchaki gapiring, jim bo'lishim uchun to'xta deng. "
@@ -937,6 +1070,21 @@ def bajar(b):
 
     elif bor(b, "ekran rasm", "skrinshot", "screenshot", "скриншот", "ekranni rasm"):
         ekran_rasmi()
+
+    elif bosish_buyrugimi(b):
+        tugma_bos(b)
+
+    elif "deb" in b.split() and b.split()[-1].startswith("yoz"):
+        matn_yozish(b)
+
+    elif bor(b, "pastga", "tepaga", "yuqoriga") and bor(b, "tushir", "aylantir", "chiq", "sur") \
+            and not bor(b, "ovoz"):
+        pyautogui.scroll(-600 if bor(b, "pastga") else 600)
+        gapir("Bajarildi.")
+
+    elif bor(b, "yop") and bor(b, "oyna", "dastur", "ilova", "o'yin", "programma") \
+            and not bor(b, "sozlama"):
+        oynani_yop()
 
     elif (javob_telegramga or bor(b, "telegram")) and bor(b, "tashla", "yubor", "jo'nat") \
             and not bor(b, "qo'yib", "qo'y"):

@@ -8,6 +8,7 @@ Gapirish va tasdiq so'rash jarvis.py ichida.
 import datetime
 import difflib
 import os
+import re
 import shutil
 import stat
 import string
@@ -286,10 +287,33 @@ def qidiruv_joylari():
     return joylar
 
 
+def qisqartma(nom):
+    """'Counter-Strike 1.6' -> 'cs 1.6' (so'zlarning bosh harflari + raqamlar)."""
+    bosh, raqamlar = "", []
+    for soz in re.split(r"[\s\-_]+", nom.lower()):
+        if not soz:
+            continue
+        if soz[0].isdigit():
+            raqamlar.append(soz)
+        else:
+            bosh += soz[0]
+    return " ".join([bosh] + raqamlar).strip()
+
+
+def _asos_nom(nom):
+    """Kengaytmasiz nom. '1.6' dagi '.6' kengaytma emas — raqam bo'lsa kesmaymiz."""
+    asos, kengaytma = os.path.splitext(nom)
+    if not kengaytma or kengaytma[1:].isdigit():
+        return nom.lower()
+    return asos.lower()
+
+
 def _mos_keladimi(qidiruv, nom):
-    asos = os.path.splitext(nom)[0].lower()
+    asos = _asos_nom(nom)
     if qidiruv in asos:
         return True
+    if qidiruv == qisqartma(asos) or qidiruv.replace(" ", "") == qisqartma(asos).replace(" ", ""):
+        return True                                         # "cs 1.6" -> "Counter-Strike 1.6"
     if abs(len(asos) - len(qidiruv)) <= 3:                  # "hisobod" -> "hisobot"
         return difflib.SequenceMatcher(None, qidiruv, asos).ratio() >= 0.8
     return False
@@ -315,7 +339,7 @@ def fayl_qidir(nom, vaqt_chegarasi=30, max_natija=30):
                 break
 
     def tartib(yol):
-        asos = os.path.splitext(os.path.basename(yol))[0].lower()
+        asos = _asos_nom(os.path.basename(yol))
         return (asos != qidiruv, qidiruv not in asos, len(yol))
     return sorted(topildi, key=tartib)
 
@@ -343,3 +367,98 @@ def papkada_korsat(yol):
     """Explorer'ni ochib, faylni belgilab ko'rsatadi."""
     if WINDOWS:
         subprocess.Popen(f'explorer /select,"{yol}"')
+
+
+# ---------- YO'LNI TUSHUNISH: "C diskdagi games papkasidan cs 1.6 ni" ----------
+DISK_RE = re.compile(r"(?:^|\s)([a-z])\s*(?:disk|диск)")
+FAYL_SOZLARI = ("fayl", "file", "papka", "folder", "файл", "папк")
+YOL_ORTIQCHA = ("menga", "mening", "kompyuter", "disk", "диск", "nusxa", "olib", "tashla",
+                "yubor", "jo'nat", "telegram", "iltimos", "ichida", "ichidan", "jarvis",
+                "hamma", "barcha", "butun", "degan", "nomli")
+YOL_ANIQ = {"ber", "bering", "ni", "u", "bu", "va", "ham", "shu", "o'sha", "menga"}
+
+
+def _yol_nomi(sozlar, disk_harfi):
+    """So'zlar bo'lagidan papka/fayl nomini ajratadi (keraksiz so'zlarsiz)."""
+    qolgan = []
+    for s in sozlar:
+        s = s.strip('"\'«»“”,.!?')
+        if not s or s in YOL_ANIQ or s.startswith(YOL_ORTIQCHA) or s == disk_harfi:
+            continue
+        for qoshimcha in ("ning", "dagi", "idagi", "dan", "ni"):
+            if len(s) > len(qoshimcha) + 2 and s.endswith(qoshimcha):
+                s = s[:-len(qoshimcha)]
+                break
+        qolgan.append(s)
+    return " ".join(qolgan).strip()
+
+
+def yol_qismlari(gap):
+    """'c diskdagi games filesidan cs 1.6 fileni tashla' -> ('C:\\', ['games', 'cs 1.6'])"""
+    gap = gap.lower()
+    m = DISK_RE.search(gap)
+    disk = m.group(1).upper() + ":\\" if m else None
+    harf = m.group(1) if m else None
+    nomlar, bufer = [], []
+    for soz in gap.split():
+        if soz.strip('"\'«»“”,.').startswith(FAYL_SOZLARI):
+            nom = _yol_nomi(bufer, harf)
+            if nom:
+                nomlar.append(nom)
+            bufer = []
+        else:
+            bufer.append(soz)
+    oxirgi = _yol_nomi(bufer, harf)
+    if oxirgi:
+        nomlar.append(oxirgi)
+    return disk, nomlar
+
+
+def _ichidan_top(ildiz, nom, faqat_papka, vaqt_chegarasi=15):
+    """ildiz ichidan nom bo'yicha papka/fayl topadi. Avval bevosita ichidagilar, keyin chuqurroq."""
+    if ildiz is None:
+        for yol in fayl_qidir(nom):
+            if not faqat_papka or os.path.isdir(yol):
+                return yol
+        return None
+    qidiruv = nom.lower()
+    try:
+        ichidagilar = os.listdir(ildiz)
+    except OSError:
+        return None
+    mos = [n for n in ichidagilar if _mos_keladimi(qidiruv, n)
+           and (not faqat_papka or os.path.isdir(os.path.join(ildiz, n)))]
+    if mos:
+        mos.sort(key=lambda n: (os.path.splitext(n)[0].lower() != qidiruv, len(n)))
+        return os.path.join(ildiz, mos[0])
+    tugash = time.time() + vaqt_chegarasi
+    for joriy, ichki, fayllar in os.walk(ildiz):
+        chuqurlik = joriy[len(ildiz):].count(os.sep)
+        ichki[:] = [d for d in ichki if d.lower() not in QIDIRMASLIK
+                    and not d.startswith((".", "$"))] if chuqurlik < 4 else []
+        for n in ichki + ([] if faqat_papka else fayllar):
+            if _mos_keladimi(qidiruv, n):
+                return os.path.join(joriy, n)
+        if time.time() > tugash:
+            break
+    return None
+
+
+def yol_top(disk, nomlar):
+    """(topilgan_yol, None) yoki (None, topilmagan_nom)."""
+    joy = disk
+    if joy and not os.path.isdir(joy):
+        return None, disk
+    for i, nom in enumerate(nomlar):
+        topildi = _ichidan_top(joy, nom, faqat_papka=i < len(nomlar) - 1)
+        if not topildi:
+            return None, nom
+        joy = topildi
+    return joy, None
+
+
+def papkani_zip(papka):
+    """Papkani vaqtinchalik ZIP faylga aylantiradi va yo'lini qaytaradi."""
+    asos = os.path.join(tempfile.gettempdir(), "jarvis_" + os.path.basename(papka.rstrip("\\/")))
+    return shutil.make_archive(asos, "zip", root_dir=os.path.dirname(papka.rstrip("\\/")),
+                               base_dir=os.path.basename(papka.rstrip("\\/")))
