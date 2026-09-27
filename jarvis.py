@@ -573,16 +573,9 @@ def ilovada_yoz(gap):
 
 
 def _ilovada_yoz_fonda(ilova, nom, xabar):
-    jarvisni_yashir(45)                          # butun jarayon davomida yashirin turadi
-    bir_soz = nom.replace(" ", "")
-    # Instagram: username bo'lsa, to'g'ridan-to'g'ri profil sahifasini ochamiz (ishonchliroq)
-    if ilova == "instagram" and " " not in nom:
-        webbrowser.open(f"https://www.instagram.com/{bir_soz}/")
-        time.sleep(9)
-        # profil sahifasidagi "Message" tugmasini bosamiz
-        if not boshqaruv.kalitlardan_bos(("message", "xabar", "написать", "message button")):
-            pyautogui.press("enter")
-        time.sleep(3)
+    jarvisni_yashir(50)                          # butun jarayon davomida yashirin turadi
+    if ilova == "instagram":
+        _instagramda_yoz(nom, xabar)
     else:
         webbrowser.open(WEB_ILOVALAR[ilova][0])
         time.sleep(9)
@@ -593,16 +586,42 @@ def _ilovada_yoz_fonda(ilova, nom, xabar):
         time.sleep(3)
         pyautogui.press("enter")
         time.sleep(3)
-    # xabar maydonini topib, matnni yozamiz
-    boshqaruv.kalitlardan_bos(XABAR_KALITLARI)
+        boshqaruv.kalitlardan_bos(XABAR_KALITLARI)
+        time.sleep(0.5)
+        boshqaruv.matn_yoz(xabar)
+        time.sleep(0.4)
+        pyautogui.press("enter")
+        time.sleep(1)
+    gapir(f"{ilova} da {nom} ga yozdim: {xabar}")
+    telegramga_ekran()
+    ui_navbat.put(("korsat",))
+
+
+def _instagramda_yoz(nom, xabar):
+    """Instagram DM: qutini ochib, yangi xabar -> username qidirish -> chat -> yozish.
+    Ekrandagi yozuvlarni o'qib bosadi (username matni bo'yicha aniq topadi)."""
+    webbrowser.open("https://www.instagram.com/direct/inbox/")
+    time.sleep(10)                               # Instagram sekin yuklanadi
+    # 1) "Send message" (bo'sh qutidagi tugma) yoki qalam (yangi xabar) belgisini bosamiz
+    boshqaruv.kalitlardan_bos(("send message", "xabar yuborish", "new message", "отправить"))
+    time.sleep(2)
+    # 2) "To:" qidiruv maydoni odatda avtomatik faol — username yozamiz
+    boshqaruv.matn_yoz(nom.replace(" ", ""))
+    time.sleep(3)
+    # 3) natijalardan aynan shu username ustiga bosamiz (matni bo'yicha aniq)
+    if not boshqaruv.kalitlardan_bos((nom.replace(" ", ""), nom)):
+        pyautogui.press("tab")                   # topolmasa, klaviatura bilan tanlaymiz
+    time.sleep(1)
+    # 4) "Chat"/"Next" tugmasi bilan suhbatga o'tamiz
+    boshqaruv.kalitlardan_bos(("chat", "next", "keyingi", "davom", "далее", "начать"))
+    time.sleep(4)
+    # 5) xabar maydonini topib yozamiz
+    boshqaruv.kalitlardan_bos(("message", "xabar", "write a message", "message…", "сообщение"))
     time.sleep(0.5)
     boshqaruv.matn_yoz(xabar)
     time.sleep(0.4)
     pyautogui.press("enter")
     time.sleep(1)
-    gapir(f"{ilova} da {nom} ga yozdim: {xabar}")
-    telegramga_ekran()
-    ui_navbat.put(("korsat",))
 
 
 def ekranni_kuzat(soniya=120, oraliq=3):
