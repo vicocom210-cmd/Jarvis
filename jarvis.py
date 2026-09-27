@@ -33,9 +33,12 @@ import speech_recognition as sr
 
 import bilim
 import kompyuter
+import sozlamalar
+from tarjima import tarjima
 
-ISM = "Abdulloh"                 # Jarvis sizni shunday chaqiradi
-OVOZ = "uz-UZ-SardorNeural"      # ayol ovozi uchun: "uz-UZ-MadinaNeural"
+# Ovoz, til, rang va ism — oynadagi ⚙ menyusidan yoki ovoz bilan o'zgartiriladi
+SOZ = sozlamalar.yukla()
+ISM = SOZ["ism"]                 # Jarvis sizni shunday chaqiradi
 SUHBAT_VAQTI = 8                 # buyruqdan keyin shuncha soniya "Jarvis" demasdan gapirsa bo'ladi
 
 pygame.mixer.init()
@@ -64,7 +67,19 @@ gapiryapti = threading.Event()    # Jarvis gapirayotganda mikrofon o'z ovozini e
 gap_tugadi = 0.0                  # Jarvis oxirgi marta qachon gapirib bo'ldi
 
 
-def gapir(matn):
+def til():
+    return SOZ["til"]
+
+
+def ovoz_nomi():
+    return sozlamalar.TILLAR[til()][SOZ["ovoz"]]
+
+
+def gapir(matn, tarjima_qil=True):
+    """Jarvis ichida hamma javob o'zbekcha yoziladi; boshqa til tanlangan bo'lsa,
+    gapirishdan oldin o'sha tilga tarjima qilinadi."""
+    if tarjima_qil and til() != "uz":
+        matn = tarjima(matn, "uz", til())
     print(f"Jarvis: {matn}")
     ui_navbat.put(("jarvis", matn))
     with ovoz_qulfi:
@@ -90,7 +105,7 @@ def ovoz_balandliklari(tovush):
 
 def _gapir(matn):
     try:
-        asyncio.run(edge_tts.Communicate(matn, OVOZ).save(AUDIO_FAYL))
+        asyncio.run(edge_tts.Communicate(matn, ovoz_nomi()).save(AUDIO_FAYL))
         tovush = pygame.mixer.Sound(AUDIO_FAYL)
         try:
             ui_navbat.put(("ovoz", ovoz_balandliklari(tovush), time.time()))
@@ -147,7 +162,7 @@ def mikrofon_ishi():
 
 def matnga_aylantir(audio):
     try:
-        matn = tanib.recognize_google(audio, language="uz-UZ")
+        matn = tanib.recognize_google(audio, language=sozlamalar.TILLAR[til()]["google"])
     except sr.UnknownValueError:
         return
     except sr.RequestError:
@@ -169,6 +184,9 @@ def keyingi_gap(kutish):
             manba, matn, vaqt = kirish_navbat.get(timeout=qoldi)
         except queue.Empty:
             return None
+        if manba == "sozlama":                  # oynadagi menyuda tanlandi
+            sozlama_ozgartir(*matn)
+            continue
         if manba == "yozuv":
             matn = normallashtir(matn)
         if vaqt >= gap_tugadi:
@@ -184,7 +202,84 @@ def eshit(kutish=8):
     if not gap:
         return ""
     ui_navbat.put(("siz", gap[1]))
-    return gap[1]
+    return ichki_tilga(gap[1])
+
+
+def ichki_tilga(matn):
+    """Boshqa tilda aytilgan gapni o'zbekchaga o'giradi (buyruqlar o'zbekcha tekshiriladi)."""
+    if til() == "uz" or not matn:
+        return matn
+    # "auto" — tilni Google o'zi aniqlaydi: o'zbekcha aytilsa ham to'g'ri tushunadi
+    return normallashtir(tarjima(matn, "auto", "uz"))
+
+
+# ---------- 2.1. SOZLAMALAR ----------
+SOZLAMA_JAVOBLARI = {
+    "ovoz": "Ovozim o'zgardi. Endi shunday gapiraman.",
+    "til": "Til o'zgardi. Endi shu tilda gaplashamiz.",
+    "rang": "Rangim o'zgardi.",
+}
+
+
+def sozlama_ozgartir(kalit, qiymat, ayt=True):
+    global ISM
+    SOZ[kalit] = qiymat
+    sozlamalar.saqla(SOZ)
+    ISM = SOZ["ism"]
+    ui_navbat.put(("sozlamalar", dict(SOZ)))
+    if ayt:
+        gapir(f"Yaxshi, endi sizni {ISM} deb chaqiraman." if kalit == "ism"
+              else SOZLAMA_JAVOBLARI[kalit])
+
+
+TIL_SOZLARI = {"ru": ("rus", "русск"), "en": ("ingliz", "english", "англий"),
+               "de": ("nemis", "german", "deutsch", "немец"), "uz": ("o'zbek", "uzbek", "узбек")}
+RANG_SOZLARI = {"kok": ("ko'k", "moviy", "havorang"), "yashil": ("yashil",),
+                "qizil": ("qizil",), "oltin": ("oltin", "sariq", "tilla"),
+                "binafsha": ("binafsha", "siyoh"), "oq": ("oq ", "oqqa", "oppoq")}
+
+
+def ism_ajrat(gap):
+    """'mening ismim abdulloh' -> 'Abdulloh';  'meni ali deb chaqir' -> 'Ali'"""
+    sozlar = gap.split()
+    for i, s in enumerate(sozlar):
+        if s.startswith("ismim") and i + 1 < len(sozlar):
+            return " ".join(sozlar[i + 1:i + 3]).replace(" deb", "").title()
+    if "deb" in sozlar:
+        oldin = [s for s in sozlar[:sozlar.index("deb")] if s not in ("meni", "endi", "jarvis")]
+        if oldin:
+            return oldin[-1].title()
+    return ""
+
+
+def sozlama_buyrugi(b):
+    """Ovoz bilan sozlash. Bajarilsa True qaytaradi."""
+    if bor(b, "sozlama", "nastroyka", "настрой"):
+        ui_navbat.put(("sozlamalarni_och",))
+        gapir("Sozlamalarni ochdim.")
+        return True
+    if bor(b, "ovoz") and bor(b, "ayol", "qiz", "xotin", "женск"):
+        sozlama_ozgartir("ovoz", "ayol")
+        return True
+    if bor(b, "ovoz") and bor(b, "erkak", "o'g'il", "yigit", "мужск"):
+        sozlama_ozgartir("ovoz", "erkak")
+        return True
+    if bor(b, "til", "язык", "language", "sprache"):
+        for kalit, sozlar in TIL_SOZLARI.items():
+            if bor(b, *sozlar):
+                sozlama_ozgartir("til", kalit)
+                return True
+    if bor(b, "rang"):
+        for kalit, sozlar in RANG_SOZLARI.items():
+            if bor(b + " ", *sozlar):
+                sozlama_ozgartir("rang", kalit)
+                return True
+    if bor(b, "ismim") or (bor(b, "chaqir") and "deb" in b.split()):
+        ism = ism_ajrat(b)
+        if ism:
+            sozlama_ozgartir("ism", ism)
+            return True
+    return False
 
 
 # ---------- 3. SO'Z QIDIRISH (xato yozilganini ham topadi) ----------
@@ -204,7 +299,8 @@ def tasdiqla(savol):
     """Xavfli ishdan oldin so'raydi. Faqat "ha" desangiz True qaytaradi."""
     gapir(savol + " Ha yoki yo'q deng.")
     javob = eshit().split()
-    return any(s in ("ha", "xa", "ha'", "albatta", "roziman") for s in javob)
+    return any(s.strip(".,!") in ("ha", "xa", "ha'", "albatta", "roziman", "да", "yes", "ja")
+               for s in javob)
 
 
 def fonda(ish, *qiymatlar):
@@ -606,9 +702,9 @@ def javob_ber(gap):
     if not bilim.savolmi(gap):
         gapir(ai_javob(gap))
         return
-    javob, havola = bilim.javob_top(gap)
+    javob, havola = bilim.javob_top(gap, til())
     if javob:
-        gapir(javob)
+        gapir(javob, tarjima_qil=False)          # Vikipediya allaqachon shu tilda
     elif os.environ.get("ANTHROPIC_API_KEY"):
         gapir(ai_javob(gap))
     else:
@@ -629,6 +725,7 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
                 "Kompyuterdagi dasturlarni ochaman, masalan: wordni och. "
                 "Fayl qayerdaligini topaman, masalan: hisobot faylini top. "
                 "Savollarga Vikipediyadan javob beraman, masalan: Amir Temur kim. "
+                "Sozlamalar deng: ovozim, tilim va rangimni o'zgartirasiz. "
                 "To'xtatish uchun xayr deng.")
 
 
@@ -638,6 +735,9 @@ def bajar(b):
     if bor(b, "xayr", "to'xta"):
         gapir(f"Xayr, {ISM}!")
         return False
+
+    elif sozlama_buyrugi(b):
+        pass
 
     elif bor(b, "salom", "assalom"):
         gapir(f"Va alaykum assalom, {ISM}! Buyruq bering.")
@@ -765,6 +865,7 @@ def bajar(b):
 # ---------- ASOSIY SIKL (miya thread'i) ----------
 def miya():
     global media_boshlandi
+    ui_navbat.put(("sozlamalar", dict(SOZ)))
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
@@ -796,7 +897,7 @@ def miya():
         holat("o'ylash")
         media_boshlandi = False
         try:
-            davom = bajar(buyruq)
+            davom = bajar(ichki_tilga(buyruq))
         except Exception as xato:
             print(f"(Xato: {xato})")
             gapir("Buyruqni bajarishda xato bo'ldi.")
@@ -814,7 +915,7 @@ def miya():
 
 if __name__ == "__main__":
     import interfeys
-    oyna = interfeys.Oyna(ui_navbat, kirish_navbat)     # oyna — asosiy thread'da
+    oyna = interfeys.Oyna(ui_navbat, kirish_navbat, SOZ)     # oyna — asosiy thread'da
     threading.Thread(target=mikrofon_ishi, daemon=True).start()
     threading.Thread(target=miya, daemon=True).start()
     oyna.ishga_tushir()

@@ -54,11 +54,12 @@ def vikipediya(mavzu, til="uz"):
     return javob or None
 
 
-def javob_top(gap):
-    """(javob, None) yoki (None, google_havolasi)"""
+def javob_top(gap, til="uz"):
+    """(javob, None) yoki (None, google_havolasi).
+    gap — o'zbekcha savol; javob tanlangan tildagi Vikipediyadan olinadi."""
     mavzu = savol_mavzusi(gap) or gap
     try:
-        javob = vikipediya(mavzu)
+        javob = vikipediya(mavzu, til)
         if javob:
             return javob, None
     except Exception as xato:
