@@ -471,13 +471,17 @@ def telegram_xabar_qismlari(gap):
     ilova_prefikslari = ("telegram", "телеграм", "instagram", "инстаграм", "insta", "whatsapp",
                          "vatsap", "votsap", "ватсап", "messenger", "мессенджер", "vkontakte", "вк")
     boshi = next((i for i, s in enumerate(sozlar) if s.startswith(ilova_prefikslari)), -1)
-    oxiri = len(sozlar) - 1 - sozlar[::-1].index("deb")
-    orta = " ".join(sozlar[boshi + 1:oxiri]).strip()
-    # ko'p bosqichli gapdagi ortiqcha so'zlar ("chromega kirib ... qidir va kirib chatga otib")
-    filtr = {"kirib", "kir", "kirgin", "qidir", "qidirib", "qidirgin", "qidirib", "va", "keyin",
-             "otib", "o'tib", "otgin", "chatga", "chat", "messagega", "message", "direct",
-             "xabarga", "yozishma", "topib", "top", "ochib", "och", "so'ng", "unga", "shundan",
-             "deb", "kirvol", "kir"}
+    orta = " ".join(sozlar[boshi + 1:]).strip()
+    # FAQAT oxiridagi belgi so'zlarni ("... deb yoz", "... de", "... yozib ber") olib tashlaymiz
+    # (gap o'rtasidagi "yoz"ga tegmaymiz)
+    orta = re.sub(r"(\s+(deb|de|degin|yozib|yoz|yozgin|yubor|yuboring|jo'nat|ber|bering))+\s*$",
+                  "", orta, flags=re.IGNORECASE).strip()
+    # ko'p bosqichli gapdagi ortiqcha so'zlar
+    filtr = {"kirib", "kir", "kirgin", "kirvol", "qidir", "qidirib", "qidirgin", "va", "keyin",
+             "otib", "o'tib", "otgin", "chatga", "chat", "chatiga", "messagega", "messages",
+             "message", "direct", "xabarga", "xabar", "yozishma", "topib", "top", "ochib", "och",
+             "so'ng", "unga", "shundan", "deb", "de", "yoz", "yozib", "profilga", "profiliga",
+             "manashu", "mana", "shu", "o'sha", "osha", "menga", "iltimos"}
     qoshtirnoq = re.match(r'["“«\']([^"”»\']+)["”»\']\s*(?:ga|ni|ning)?\s*(.*)$', orta)
     if qoshtirnoq:
         nom = qoshtirnoq.group(1).strip()
@@ -488,9 +492,11 @@ def telegram_xabar_qismlari(gap):
     # BIRINCHI "ga" — undan oldingisi kimga, keyingisi xabar
     for j, s in enumerate(orta):
         if s == "ga" and j > 0:                            # "my bro ga salom"
-            return " ".join(orta[:j]).strip("\"'«»"), " ".join(orta[j + 1:]).strip()
-        if s.endswith("ga") and len(s) > 3 and not s.endswith(("chatga", "messagega")):
-            return " ".join(orta[:j] + [s[:-2]]).strip("\"'«»"), " ".join(orta[j + 1:]).strip()
+            nom = [w for w in orta[:j] if w not in filtr]
+            return " ".join(nom).strip("\"'«»"), " ".join(orta[j + 1:]).strip()
+        if s.endswith("ga") and len(s) > 3 and not s.endswith(("chatga", "messagega", "profilga")):
+            nom = [w for w in orta[:j] if w not in filtr] + [s[:-2]]
+            return " ".join(nom).strip("\"'«»"), " ".join(orta[j + 1:]).strip()
     return None, None
 
 
@@ -562,24 +568,32 @@ def ilovada_yoz(gap):
             f"{ilova} da {nom} ga {xabar} deb yozaymi?"):
         gapir("Bekor qilindi.")
         return
-    url = WEB_ILOVALAR[ilova][0]
-    gapir(f"{ilova} ochilmoqda. {nom} ni topib, xabar yozaman.")
-    fonda(_ilovada_yoz_fonda, ilova, url, nom, xabar)
+    gapir(f"{ilova} ochilmoqda. {nom} ga xabar yozaman.")
+    fonda(_ilovada_yoz_fonda, ilova, nom, xabar)
 
 
-def _ilovada_yoz_fonda(ilova, url, nom, xabar):
+def _ilovada_yoz_fonda(ilova, nom, xabar):
     jarvisni_yashir(45)                          # butun jarayon davomida yashirin turadi
-    webbrowser.open(url)
-    time.sleep(9)                                # sahifa yuklanishini kutamiz
-    # 1) qidiruvni ochamiz va kontakt nomini yozamiz
-    if not boshqaruv.kalitlardan_bos(QIDIRUV_KALITLARI):
-        pyautogui.hotkey("ctrl", "k")           # ba'zi saytlarda qidiruv shu tugma bilan ochiladi
-    time.sleep(1)
-    boshqaruv.matn_yoz(nom)
-    time.sleep(3)                               # natijalar chiqishini kutamiz
-    pyautogui.press("enter")                    # birinchi natijani ochamiz
-    time.sleep(3)
-    # 2) xabar maydonini topib, matnni yozamiz
+    bir_soz = nom.replace(" ", "")
+    # Instagram: username bo'lsa, to'g'ridan-to'g'ri profil sahifasini ochamiz (ishonchliroq)
+    if ilova == "instagram" and " " not in nom:
+        webbrowser.open(f"https://www.instagram.com/{bir_soz}/")
+        time.sleep(9)
+        # profil sahifasidagi "Message" tugmasini bosamiz
+        if not boshqaruv.kalitlardan_bos(("message", "xabar", "написать", "message button")):
+            pyautogui.press("enter")
+        time.sleep(3)
+    else:
+        webbrowser.open(WEB_ILOVALAR[ilova][0])
+        time.sleep(9)
+        if not boshqaruv.kalitlardan_bos(QIDIRUV_KALITLARI):
+            pyautogui.hotkey("ctrl", "k")
+        time.sleep(1)
+        boshqaruv.matn_yoz(nom)
+        time.sleep(3)
+        pyautogui.press("enter")
+        time.sleep(3)
+    # xabar maydonini topib, matnni yozamiz
     boshqaruv.kalitlardan_bos(XABAR_KALITLARI)
     time.sleep(0.5)
     boshqaruv.matn_yoz(xabar)
@@ -1305,9 +1319,9 @@ def bajar(b):
             or b.strip() in ("screen", "skrin", "скрин"):
         ekran_rasmi()
 
-    elif "deb" in b.split() and b.split()[-1].startswith(("yoz", "yubor", "jo'nat")) and (
-            bor(b, "telegram", "телеграм", "instagram", "инстаграм", "insta", "whatsapp",
-                "vatsap", "votsap", "ватсап", "messenger", "vkontakte") and bor(b, "ga ", "ga")):
+    elif bor(b, "telegram", "телеграм", "instagram", "инстаграм", "insta", "whatsapp",
+             "vatsap", "votsap", "ватсап", "messenger", "vkontakte") and " ga " in (" " + b + " ") \
+            and any(s.startswith(("yoz", "yubor", "jo'nat", "xabar")) for s in b.split()):
         ilovada_yoz(b)
 
     elif bosish_buyrugimi(b):
