@@ -1269,6 +1269,64 @@ def _usb_nusxala_fonda(disklar, manzil):
         gapir(f"Fleshkadagi hamma fayllar nusxalandi. Ish stolidagi papka nomi: {papka}.")
 
 
+def _fleshka_manbasi_bor(gap):
+    """'games papkasini fleshkaga ko'chir' — ko'chiriladigan manba (disk yoki papka nomi) bormi?
+    Bo'lsa: kompyuterdan -> fleshkaga. Bo'lmasa: fleshkadan -> ish stoliga (eski usul)."""
+    disk, nomlar = kompyuter.yol_qismlari(gap)
+    if disk:
+        return True
+    return any(not bor(n, "fleshka", "usb", "flesh", "флешка") for n in nomlar)
+
+
+def fleshkaga_kochir(gap):
+    """Kompyuterdagi papka/faylni fleshkaga ko'chiradi — LEKIN avval nimani va qayerga
+    ko'chirishni ovoz bilan tasdiqlaydi (noto'g'ri eshitgan bo'lsa, siz yo'q deysiz)."""
+    disk, nomlar = kompyuter.yol_qismlari(gap)
+    nomlar = [n for n in nomlar if not bor(n, "fleshka", "usb", "flesh", "флешка")]
+    if not (disk or nomlar):
+        gapir("Nimani fleshkaga ko'chiray? Masalan: C diskdagi games papkasini fleshkaga ko'chir.")
+        return
+    yol, topilmadi = kompyuter.yol_top(disk, nomlar) if nomlar else (disk, None)
+    if not yol or not os.path.exists(yol):
+        gapir(f"{topilmadi or 'Manba'} topilmadi." + (f" {disk} diskida qidirdim." if disk else ""))
+        return
+    fleshkalar = kompyuter.usb_disklar()
+    if not fleshkalar:
+        gapir("USB fleshka topilmadi. Fleshkani ulang va qayta urinib ko'ring.")
+        return
+    flesh = fleshkalar[0]
+    nom = os.path.basename(yol.rstrip("\\/")) or yol
+    tur = "papka" if os.path.isdir(yol) else "fayl"
+    # ISHONCH HOSIL QILISH — buyruqni darhol bajarmaymiz, avval so'raymiz:
+    if not tasdiqla(f"{yol} degan {tur}ni {flesh} fleshkaga ko'chiraymi?"):
+        gapir("Yaxshi, ko'chirishni bekor qildim.")
+        return
+    try:
+        hajm = kompyuter.papka_hajmi(yol) if os.path.isdir(yol) else os.path.getsize(yol)
+        bosh = shutil.disk_usage(flesh).free
+        if hajm > bosh:
+            gapir(f"{nom} hajmi {kompyuter.hajm_matn(hajm)}, lekin fleshkada joy yetmaydi "
+                  f"({kompyuter.hajm_matn(bosh)} bo'sh). Boshqa fleshka ulang yoki joy bo'shating.")
+            return
+    except OSError:
+        pass
+    gapir(f"{nom} ni {flesh} fleshkaga ko'chiryapman. Bu biroz vaqt olishi mumkin, tugagach aytaman.")
+    fonda(_fleshkaga_kochir_fonda, yol, flesh, nom)
+
+
+def _fleshkaga_kochir_fonda(yol, flesh, nom):
+    try:
+        if os.path.isdir(yol):
+            shutil.copytree(yol, os.path.join(flesh, nom),
+                            ignore=kompyuter.KERAKSIZ, dirs_exist_ok=True)
+        else:
+            shutil.copy2(yol, flesh)
+        gapir(f"{nom} fleshkaga ko'chirildi.")
+    except Exception as xato:
+        print(f"(Fleshkaga ko'chirish xatosi: {xato})")
+        gapir("Ko'chirishda xato bo'ldi. Fleshka to'la emasligini yoki fayl ochiq emasligini tekshiring.")
+
+
 # ---------- 5.3. KESH ----------
 def keshni_tozala():
     gapir("Vaqtinchalik fayllarni qidiryapman.")
@@ -1565,8 +1623,17 @@ def bajar(b):
         keshni_tozala()
 
     elif bor(b, "usb", "юсб", "fleshka", "флешка", "flesh") and bor(
+            b, "nusxa", "ko'chir", "kochir", "copy", "tashla", "saqla") and not bor(
+            b, "desktop", "ish stoli", "stolga") and _fleshka_manbasi_bor(b):
+        # "C diskdagi games papkasini fleshkaga ko'chir" — avval tasdiq so'raydi
+        fleshkaga_kochir(b)
+
+    elif bor(b, "usb", "юсб", "fleshka", "флешка", "flesh") and bor(
             b, "nusxa", "ko'chir", "kochir", "copy", "desktop", "ish stoli"):
-        usb_nusxala()
+        if tasdiqla("Fleshkadagi hamma fayllarni ish stoliga nusxalaymi?"):
+            usb_nusxala()
+        else:
+            gapir("Yaxshi, bekor qildim.")
 
     elif (bor(b, "fayl", "papka", "hujjat") and bor(b, "qayer", "qidir", "top")) or (
             bor(b, "kompyuter") and bor(b, "qidir", "top")):
