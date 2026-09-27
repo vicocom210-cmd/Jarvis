@@ -2,6 +2,7 @@
 O'zbekcha JARVIS — Windows uchun ovozli yordamchi (2-versiya)
 Qo'shimcha:  pip install shazamio   (musiqani tanish uchun)
 Ishga tushirish:  PyCharm'dagi yashil ▶ tugma
+Chaqirish:  "Jarvis" deng (yoki "Jarvis, youtubeni och" deb bitta gapda ayting)
 """
 import asyncio
 import datetime
@@ -23,6 +24,7 @@ import speech_recognition as sr
 
 OVOZ = "uz-UZ-SardorNeural"      # ayol ovozi uchun: "uz-UZ-MadinaNeural"
 MATN_REJIMI = False              # True qilsangiz, mikrofon o'rniga klaviaturadan yozasiz
+SUHBAT_VAQTI = 8                 # buyruqdan keyin shuncha soniya "Jarvis" demasdan gapirsa bo'ladi
 
 pygame.mixer.init()
 tanib = sr.Recognizer()
@@ -51,24 +53,30 @@ def normallashtir(matn):
     return matn.lower().strip()
 
 
-def eshit():
+def eshit(kutish=8, jim=False):
+    """Mikrofondan bitta gapni eshitib, matnga aylantiradi.
+    kutish — gap boshlanishini necha soniya kutish.
+    jim=True — kutish rejimida xatolarni ovoz chiqarib aytmaydi."""
     if MATN_REJIMI:
         return normallashtir(input("Siz: "))
     with sr.Microphone() as mic:
         tanib.adjust_for_ambient_noise(mic, duration=0.5)
-        print("🎤 Tinglayapman...")
+        print("🎤 Tinglayapman..." if not jim else "💤 Kutyapman (Jarvis deng)...")
         try:
-            audio = tanib.listen(mic, timeout=8, phrase_time_limit=7)
+            audio = tanib.listen(mic, timeout=kutish, phrase_time_limit=7)
         except sr.WaitTimeoutError:
             return ""
     try:
         matn = tanib.recognize_google(audio, language="uz-UZ")
-        print(f"Siz: {matn}")
+        print(f"Eshitildi: {matn}")
         return normallashtir(matn)
     except sr.UnknownValueError:
         return ""
     except sr.RequestError:
-        gapir("Internet bilan muammo bor.")
+        if jim:
+            print("(Internet bilan muammo bor)")
+        else:
+            gapir("Internet bilan muammo bor.")
         return ""
 
 
@@ -83,6 +91,46 @@ def bor(gap, *sozlar):
         if len(soz) >= 5 and difflib.get_close_matches(soz, gapdagi_sozlar, n=1, cutoff=0.8):
             return True
     return False
+
+
+# ---------- 3.1. "JARVIS" DEB CHAQIRISH (wake word) ----------
+KIRILL_LOTIN = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "j",
+                "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n",
+                "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f",
+                "х": "x", "ц": "s", "ч": "ch", "ш": "sh", "ы": "i", "э": "e", "ю": "yu",
+                "я": "ya", "ё": "yo", "ғ": "g'", "қ": "q", "ҳ": "h", "ў": "o'"}
+CHAQIRUV_SOZLAR = ("jarvis", "djarvis")
+
+
+def chaqiruv_sozimi(soz):
+    """Bu so'z "Jarvis"mi? Google turlicha yozsa ham taniydi:
+    jarvis, jarvisga, djarvis, jarviz, жарвис, джарвис..."""
+    soz = "".join(KIRILL_LOTIN.get(h, h) for h in soz)     # жарвис -> jarvis
+    soz = soz.strip(".,!?;:-\"'")
+    if len(soz) < 4:
+        return False
+    for asos in CHAQIRUV_SOZLAR:
+        # "jarvisga" -> faqat boshini ("jarvisg") ham solishtiramiz
+        bosh = soz[:len(asos) + 1]
+        oxshashlik = max(difflib.SequenceMatcher(None, asos, soz).ratio(),
+                         difflib.SequenceMatcher(None, asos, bosh).ratio())
+        if oxshashlik >= 0.75:
+            return True
+    return False
+
+
+def chaqiruvni_ajrat(gap):
+    """Gapda "Jarvis" bormi? Bo'lsa, qolgan buyruqni qaytaradi.
+    'jarvis youtubeni och' -> (True, 'youtubeni och')
+    'jarvis'               -> (True, '')
+    'qo'shiq so'zlari'     -> (False, '')"""
+    sozlar = gap.split()
+    for i, soz in enumerate(sozlar):
+        if chaqiruv_sozimi(soz):
+            keyin = " ".join(sozlar[i + 1:]).strip(" ,.!?")
+            oldin = " ".join(sozlar[:i]).strip(" ,.!?")
+            return True, keyin or oldin          # "salom jarvis" -> "salom"
+    return False, ""
 
 
 # ---------- 4. AI (ixtiyoriy) ----------
@@ -167,8 +215,15 @@ def youtube_qidiruv_sozi(gap):
     return soz.replace("musiqasini", "musiqa").replace("qo'shig'ini", "qo'shiq").strip()
 
 
+# Musiqa/video qo'yilganda True bo'ladi: shunda 8 soniyalik suhbat oynasi ochilmaydi,
+# aks holda mikrofon qo'shiq so'zlarini buyruq deb eshitib qolishi mumkin.
+media_boshlandi = False
+
+
 def youtube_ijro(soz):
     """YouTube'dan qidirib, birinchi videoni ochadi."""
+    global media_boshlandi
+    media_boshlandi = True
     url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote(soz)
     try:
         sorov = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -211,7 +266,8 @@ def musiqani_tani():
     youtube_ijro(f"{ijrochi} {nomi}")
 
 
-YORDAM_MATNI = ("Men quyidagilarni qila olaman: YouTube, Telegram, brauzer, bloknot, "
+YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng. "
+                "Men quyidagilarni qila olaman: YouTube, Telegram, brauzer, bloknot, "
                 "kalkulyator va papkalarni ochaman. Telegramda guruhni ham ocha olaman. "
                 "Soat va sanani aytaman. "
                 "Ovozni oshiraman yoki pasaytiraman. Googledan qidiraman. "
@@ -325,9 +381,44 @@ def bajar(b):
 
 
 # ---------- ASOSIY SIKL ----------
-if __name__ == "__main__":
-    gapir("Salom! Men Jarvisman. Sizga qanday yordam bera olaman?")
+def ishga_tushir():
+    global media_boshlandi
+    gapir("Salom! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring.")
+    suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
+
     while True:
-        buyruq = eshit()
-        if buyruq and not bajar(buyruq):
+        qoldi = suhbat_tugashi - time.time()
+        suhbatda = qoldi > 0
+
+        if suhbatda:
+            gap = eshit(kutish=qoldi)                   # "Jarvis" shart emas
+        else:
+            gap = eshit(kutish=10, jim=True)            # faqat "Jarvis"ni kutamiz
+        if not gap:
+            if suhbatda and time.time() >= suhbat_tugashi:
+                print("💤 Kutish rejimiga qaytdim.")
+            continue
+
+        chaqirildi, buyruq = chaqiruvni_ajrat(gap)
+        if not chaqirildi:
+            if not suhbatda:
+                continue                                # begona gap / qo'shiq — e'tibor bermaymiz
+            buyruq = gap
+        elif not buyruq:
+            gapir("Labbay, xo'jayin?")
+            suhbat_tugashi = time.time() + SUHBAT_VAQTI
+            continue
+
+        media_boshlandi = False
+        if not bajar(buyruq):
             break
+
+        if media_boshlandi:
+            suhbat_tugashi = 0                          # musiqa ketyapti — darhol kutish rejimi
+            print("💤 Musiqa qo'yildi, faqat Jarvis desangiz eshitaman.")
+        else:
+            suhbat_tugashi = time.time() + SUHBAT_VAQTI
+
+
+if __name__ == "__main__":
+    ishga_tushir()
