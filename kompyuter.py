@@ -262,3 +262,84 @@ def ilova_top(nom):
 
 def ilova_och(yol):
     os.startfile(yol)
+
+
+# ---------- FAYL QIDIRISH ----------
+# Bu papkalar ichiga kirmaymiz: tizim fayllari, juda katta va foydasiz joylar
+QIDIRMASLIK = {"appdata", "windows", "program files", "program files (x86)", "programdata",
+               "$recycle.bin", "system volume information", "node_modules", ".git",
+               "__pycache__", ".venv", "venv", "recovery", "$windows.~bt", "msocache"}
+
+
+def qidiruv_joylari():
+    """Foydalanuvchi papkasi (C:\\Users\\Ism) va boshqa disklar (D:, E: ...)."""
+    joylar = [os.path.expanduser("~")]
+    if WINDOWS:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        belgilar = k32.GetLogicalDrives()
+        for i, harf in enumerate(string.ascii_uppercase):
+            yol = f"{harf}:\\"
+            # 3 = oddiy disk, 2 = fleshka. C: diskni butunlay qidirmaymiz — faqat foydalanuvchi papkasi
+            if harf != "C" and belgilar & (1 << i) and k32.GetDriveTypeW(yol) in (2, 3):
+                joylar.append(yol)
+    return joylar
+
+
+def _mos_keladimi(qidiruv, nom):
+    asos = os.path.splitext(nom)[0].lower()
+    if qidiruv in asos:
+        return True
+    if abs(len(asos) - len(qidiruv)) <= 3:                  # "hisobod" -> "hisobot"
+        return difflib.SequenceMatcher(None, qidiruv, asos).ratio() >= 0.8
+    return False
+
+
+def fayl_qidir(nom, vaqt_chegarasi=30, max_natija=30):
+    """Nomi o'xshash fayl va papkalarni topadi. Eng mos keladigani birinchi turadi."""
+    qidiruv = nom.lower().strip()
+    if len(qidiruv) < 2:
+        return []
+    tugash = time.time() + vaqt_chegarasi
+    topildi = []
+    for joy in qidiruv_joylari():
+        if len(topildi) >= max_natija or time.time() > tugash:
+            break
+        for ildiz, ichki, fayllar in os.walk(joy):
+            ichki[:] = [d for d in ichki
+                        if d.lower() not in QIDIRMASLIK and not d.startswith((".", "$"))]
+            for nom_ in ichki + fayllar:
+                if _mos_keladimi(qidiruv, nom_):
+                    topildi.append(os.path.join(ildiz, nom_))
+            if len(topildi) >= max_natija or time.time() > tugash:
+                break
+
+    def tartib(yol):
+        asos = os.path.splitext(os.path.basename(yol))[0].lower()
+        return (asos != qidiruv, qidiruv not in asos, len(yol))
+    return sorted(topildi, key=tartib)
+
+
+PAPKA_NOMLARI = {"desktop": "ish stolida", "documents": "Hujjatlar papkasida",
+                 "downloads": "Yuklanmalar papkasida", "pictures": "Rasmlar papkasida",
+                 "music": "Musiqa papkasida", "videos": "Videolar papkasida"}
+
+
+def joy_nomi(yol):
+    """'C:\\Users\\VICO\\Downloads\\a.pdf' -> 'Yuklanmalar papkasida'"""
+    papka = os.path.dirname(yol)
+    if os.path.normcase(papka) == os.path.normcase(desktop_yoli()):
+        return "ish stolida"
+    nomi = os.path.basename(papka)
+    if nomi.lower() in PAPKA_NOMLARI:
+        return PAPKA_NOMLARI[nomi.lower()]
+    disk = os.path.splitdrive(yol)[0].rstrip(":")
+    if not nomi:
+        return f"{disk} diskida"
+    return f"{nomi} papkasida" + (f", {disk} diskida" if disk else "")
+
+
+def papkada_korsat(yol):
+    """Explorer'ni ochib, faylni belgilab ko'rsatadi."""
+    if WINDOWS:
+        subprocess.Popen(f'explorer /select,"{yol}"')

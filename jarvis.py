@@ -1,13 +1,20 @@
 """
-O'zbekcha JARVIS — Windows uchun ovozli yordamchi (2-versiya)
-Qo'shimcha:  pip install shazamio   (musiqani tanish uchun)
-Ishga tushirish:  PyCharm'dagi yashil ▶ tugma
-Chaqirish:  "Jarvis" deng (yoki "Jarvis, youtubeni och" deb bitta gapda ayting)
+O'zbekcha JARVIS — Windows uchun ovozli yordamchi (3-versiya)
+Ishga tushirish:  jarvis.bat  (yoki PyCharm'dagi yashil ▶ tugma)
+Chaqirish:  "Jarvis" deng (yoki "Jarvis, youtubeni och" deb bitta gapda ayting).
+Oynaning pastiga yozib ham buyruq bersa bo'ladi.
+
+Tuzilishi (3 ta thread):
+  asosiy thread  — oyna va shar animatsiyasi (interfeys.py)
+  mikrofon       — doim tinglaydi, eshitganini kirish_navbat'ga qo'yadi
+  miya           — kirish_navbat'dan gap olib, buyruqni bajaradi (bajar)
 """
 import asyncio
+import audioop
 import datetime
 import difflib
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -24,36 +31,75 @@ import pygame
 import pyperclip
 import speech_recognition as sr
 
+import bilim
 import kompyuter
 
+ISM = "Abdulloh"                 # Jarvis sizni shunday chaqiradi
 OVOZ = "uz-UZ-SardorNeural"      # ayol ovozi uchun: "uz-UZ-MadinaNeural"
-MATN_REJIMI = False              # True qilsangiz, mikrofon o'rniga klaviaturadan yozasiz
 SUHBAT_VAQTI = 8                 # buyruqdan keyin shuncha soniya "Jarvis" demasdan gapirsa bo'ladi
 
 pygame.mixer.init()
 tanib = sr.Recognizer()
 AUDIO_FAYL = os.path.join(tempfile.gettempdir(), "jarvis_javob.mp3")
 
+# Thread'lar orasidagi navbatlar
+ui_navbat = queue.Queue()        # miya -> oyna: holat, matnlar, ovoz balandligi
+kirish_navbat = queue.Queue()    # mikrofon va oyna -> miya: ("ovoz"/"yozuv", matn, vaqt)
+yozib_ber_navbat = queue.Queue() # Shazam -> mikrofon: "10 soniya yozib ber"
+
+
+def holat(nom):
+    """Shar ko'rinishini o'zgartiradi: kutish, tinglash, o'ylash, gapirish, shazam."""
+    global joriy_holat
+    joriy_holat = nom
+    ui_navbat.put(("holat", nom))
+
+
+joriy_holat = "kutish"
+
 
 # ---------- 1. GAPIRISH ----------
 ovoz_qulfi = threading.Lock()     # ikki ish bir vaqtda gapirmoqchi bo'lsa, navbat bilan gapiradi
+gapiryapti = threading.Event()    # Jarvis gapirayotganda mikrofon o'z ovozini eshitmasin
+gap_tugadi = 0.0                  # Jarvis oxirgi marta qachon gapirib bo'ldi
 
 
 def gapir(matn):
     print(f"Jarvis: {matn}")
+    ui_navbat.put(("jarvis", matn))
     with ovoz_qulfi:
-        _gapir(matn)
+        oldingi = joriy_holat
+        gapiryapti.set()
+        try:
+            _gapir(matn)
+        finally:
+            global gap_tugadi
+            gap_tugadi = time.time()
+            gapiryapti.clear()
+            holat(oldingi)
+
+
+def ovoz_balandliklari(tovush):
+    """Har 1/30 soniyadagi ovoz balandligi (0..1) — shar shunga qarab pulsatsiya qiladi."""
+    chastota, _, kanallar = pygame.mixer.get_init()
+    qadam = chastota // 30 * kanallar * 2          # 16-bit = 2 bayt
+    xom = tovush.get_raw()
+    return [min(1.0, audioop.rms(xom[i:i + qadam], 2) / 7000)
+            for i in range(0, len(xom), qadam)]
 
 
 def _gapir(matn):
     try:
-        pygame.mixer.music.unload()
         asyncio.run(edge_tts.Communicate(matn, OVOZ).save(AUDIO_FAYL))
-        pygame.mixer.music.load(AUDIO_FAYL)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
-        pygame.mixer.music.unload()
+        tovush = pygame.mixer.Sound(AUDIO_FAYL)
+        try:
+            ui_navbat.put(("ovoz", ovoz_balandliklari(tovush), time.time()))
+        except Exception:
+            pass
+        holat("gapirish")
+        kanal = tovush.play()
+        while kanal.get_busy():
+            time.sleep(0.05)
     except Exception as xato:
         print(f"(Ovoz chiqmadi: {xato})")
 
@@ -65,31 +111,80 @@ def normallashtir(matn):
     return matn.lower().strip()
 
 
-def eshit(kutish=8, jim=False):
-    """Mikrofondan bitta gapni eshitib, matnga aylantiradi.
-    kutish — gap boshlanishini necha soniya kutish.
-    jim=True — kutish rejimida xatolarni ovoz chiqarib aytmaydi."""
-    if MATN_REJIMI:
-        return normallashtir(input("Siz: "))
-    with sr.Microphone() as mic:
-        tanib.adjust_for_ambient_noise(mic, duration=0.5)
-        print("🎤 Tinglayapman..." if not jim else "💤 Kutyapman (Jarvis deng)...")
-        try:
-            audio = tanib.listen(mic, timeout=kutish, phrase_time_limit=7)
-        except sr.WaitTimeoutError:
-            return ""
+def mikrofon_ishi():
+    """Alohida thread: doim tinglaydi va eshitganini kirish_navbat'ga qo'yadi."""
+    try:
+        mikrofon = sr.Microphone()
+    except Exception as xato:
+        print(f"(Mikrofon topilmadi: {xato}) — pastdagi maydonga yozib buyruq bering.")
+        return
+    with mikrofon as mic:
+        tanib.adjust_for_ambient_noise(mic, duration=1)
+        while True:
+            # Shazam so'rasa — musiqani yozib beramiz
+            try:
+                soniya, javob = yozib_ber_navbat.get_nowait()
+                javob.put(tanib.record(mic, duration=soniya))
+                continue
+            except queue.Empty:
+                pass
+            if gapiryapti.is_set():
+                time.sleep(0.1)
+                continue
+            boshlandi = time.time()
+            try:
+                audio = tanib.listen(mic, timeout=3, phrase_time_limit=7)
+            except sr.WaitTimeoutError:
+                continue
+            except Exception as xato:           # mikrofon uzilsa ham thread to'xtamasin
+                print(f"(Mikrofon xatosi: {xato})")
+                time.sleep(1)
+                continue
+            if gapiryapti.is_set() or gap_tugadi > boshlandi:
+                continue                    # bu Jarvisning o'z ovozi edi
+            threading.Thread(target=matnga_aylantir, args=(audio,), daemon=True).start()
+
+
+def matnga_aylantir(audio):
     try:
         matn = tanib.recognize_google(audio, language="uz-UZ")
-        print(f"Eshitildi: {matn}")
-        return normallashtir(matn)
     except sr.UnknownValueError:
-        return ""
+        return
     except sr.RequestError:
-        if jim:
-            print("(Internet bilan muammo bor)")
-        else:
-            gapir("Internet bilan muammo bor.")
+        print("(Internet bilan muammo bor)")
+        return
+    print(f"Eshitildi: {matn}")
+    kirish_navbat.put(("ovoz", normallashtir(matn), time.time()))
+
+
+def keyingi_gap(kutish):
+    """Navbatdan keyingi gapni oladi (ovoz yoki yozuv). Jarvis gapirib bo'lishidan
+    oldin eshitilgan eski gaplar tashlab yuboriladi."""
+    tugash = time.time() + kutish
+    while True:
+        qoldi = tugash - time.time()
+        if qoldi <= 0:
+            return None
+        try:
+            manba, matn, vaqt = kirish_navbat.get(timeout=qoldi)
+        except queue.Empty:
+            return None
+        if manba == "yozuv":
+            matn = normallashtir(matn)
+        if vaqt >= gap_tugadi:
+            return manba, matn
+
+
+def eshit(kutish=8):
+    """Savolga javobni kutadi (masalan, "ha" yoki "yo'q"). Bo'sh qator — javob bo'lmadi."""
+    oldingi = joriy_holat
+    holat("tinglash")
+    gap = keyingi_gap(kutish)
+    holat(oldingi)
+    if not gap:
         return ""
+    ui_navbat.put(("siz", gap[1]))
+    return gap[1]
 
 
 # ---------- 3. SO'Z QIDIRISH (xato yozilganini ham topadi) ----------
@@ -272,8 +367,14 @@ def musiqani_tani():
         return
     gapir("Musiqani yoqing, 10 soniya tinglayman.")
     print("🎵 Musiqani tinglayapman...")
-    with sr.Microphone() as mic:
-        audio = tanib.record(mic, duration=10)
+    holat("shazam")
+    javob = queue.Queue()
+    yozib_ber_navbat.put((10, javob))
+    try:
+        audio = javob.get(timeout=30)
+    except queue.Empty:
+        gapir("Mikrofondan ovoz ololmadim.")
+        return
     fayl = os.path.join(tempfile.gettempdir(), "jarvis_musiqa.wav")
     with open(fayl, "wb") as f:
         f.write(audio.get_wav_data())
@@ -452,7 +553,70 @@ def ilova_och(gap):
         gapir(f"{nomi} ochilmadi.")
 
 
-YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng. "
+# ---------- 5.6. FAYL QIDIRISH ----------
+def fayl_nomi(gap):
+    """'kompyuterdan hisobot faylini top' -> 'hisobot'"""
+    ortiqcha = ("fayl", "papka", "hujjat", "qayer", "qidir", "top", "kompyuter", "menga",
+                "nomli", "degan", "joylash", "turibdi", "iltimos", "ichida", "jarvis")
+    aniq = {"ber", "bor", "u", "bu", "mening", "ni", "qani"}
+    sozlar = []
+    for s in gap.split():
+        if s.startswith(ortiqcha) or s in aniq:
+            continue
+        for qoshimcha in ("ning", "ni"):
+            if len(s) > len(qoshimcha) + 2 and s.endswith(qoshimcha):
+                s = s[:-len(qoshimcha)]
+                break
+        sozlar.append(s)
+    return " ".join(sozlar).strip()
+
+
+def fayl_top(gap):
+    nom = fayl_nomi(gap)
+    if not nom:
+        gapir("Qaysi faylni qidiray? Nomini ayting.")
+        nom = fayl_nomi(eshit())
+        if not nom:
+            return
+    gapir(f"{nom} nomli faylni qidiryapman.")
+    fonda(_fayl_top_fonda, nom)
+
+
+def _fayl_top_fonda(nom):
+    natijalar = kompyuter.fayl_qidir(nom)
+    if not natijalar:
+        gapir(f"{nom} degan fayl topilmadi.")
+        return
+    for yol in natijalar[:10]:
+        print("  📄", yol)
+    birinchi = natijalar[0]
+    gapir(f"{os.path.basename(birinchi)} {kompyuter.joy_nomi(birinchi)} turibdi. "
+          "Papkasini ochib ko'rsatdim.")
+    kompyuter.papkada_korsat(birinchi)
+    if len(natijalar) > 1:
+        boshqalar = "; ".join(f"{os.path.basename(y)} — {kompyuter.joy_nomi(y)}"
+                              for y in natijalar[1:4])
+        gapir(f"Yana {len(natijalar) - 1} ta o'xshash fayl bor.")
+        ui_navbat.put(("jarvis", "Boshqalari: " + boshqalar))
+
+
+# ---------- 5.7. SAVOLLARGA JAVOB ----------
+def javob_ber(gap):
+    """Savol bo'lsa — Vikipediyadan javob topadi. Topolmasa — Google'ni ochadi."""
+    if not bilim.savolmi(gap):
+        gapir(ai_javob(gap))
+        return
+    javob, havola = bilim.javob_top(gap)
+    if javob:
+        gapir(javob)
+    elif os.environ.get("ANTHROPIC_API_KEY"):
+        gapir(ai_javob(gap))
+    else:
+        webbrowser.open(havola)
+        gapir("Vikipediyadan topa olmadim, Googledan qidirib ochdim.")
+
+
+YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga yozing. "
                 "Men quyidagilarni qila olaman: YouTube, Telegram, brauzer, bloknot, "
                 "kalkulyator va papkalarni ochaman. Telegramda guruhni ham ocha olaman. "
                 "Soat va sanani aytaman. "
@@ -463,6 +627,8 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng. "
                 "Fleshkadagi fayllarni ish stoliga nusxalayman. "
                 "Keshni tozalayman va kompyuterni virusga tekshiraman. "
                 "Kompyuterdagi dasturlarni ochaman, masalan: wordni och. "
+                "Fayl qayerdaligini topaman, masalan: hisobot faylini top. "
+                "Savollarga Vikipediyadan javob beraman, masalan: Amir Temur kim. "
                 "To'xtatish uchun xayr deng.")
 
 
@@ -470,11 +636,14 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng. "
 def bajar(b):
     """False qaytarsa, dastur to'xtaydi."""
     if bor(b, "xayr", "to'xta"):
-        gapir("Xayr, xo'jayin!")
+        gapir(f"Xayr, {ISM}!")
         return False
 
     elif bor(b, "salom", "assalom"):
-        gapir("Va alaykum assalom! Buyruq bering.")
+        gapir(f"Va alaykum assalom, {ISM}! Buyruq bering.")
+
+    elif bor(b, "kimsan", "isming", "sen kim"):
+        gapir(f"Men Jarvisman, {ISM}ning shaxsiy yordamchisiman.")
 
     elif bor(b, "qalaysan", "yaxshimisan", "ishlar qalay"):
         gapir("Rahmat, yaxshi! Sizga nima yordam kerak?")
@@ -509,6 +678,11 @@ def bajar(b):
     elif bor(b, "usb", "юсб", "fleshka", "флешка", "flesh") and bor(
             b, "nusxa", "ko'chir", "kochir", "copy", "desktop", "ish stoli"):
         usb_nusxala()
+
+    elif (bor(b, "fayl", "papka", "hujjat") and bor(b, "qayer", "qidir", "top")) or (
+            bor(b, "kompyuter") and bor(b, "qidir", "top")):
+        # USB buyrug'idan keyin turishi shart: "desktopga" so'zida ham "top" bor
+        fayl_top(b)
 
     elif bor(b, *YOUTUBE_SOZLAR) or bor(b, "video", "klip", "rolik"):
         soz = youtube_qidiruv_sozi(b)
@@ -583,42 +757,51 @@ def bajar(b):
         ilova_och(b)
 
     elif b:
-        gapir(ai_javob(b))
+        javob_ber(b)
 
     return True
 
 
-# ---------- ASOSIY SIKL ----------
-def ishga_tushir():
+# ---------- ASOSIY SIKL (miya thread'i) ----------
+def miya():
     global media_boshlandi
-    gapir("Salom! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring.")
+    gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
     while True:
         qoldi = suhbat_tugashi - time.time()
         suhbatda = qoldi > 0
+        yangi_holat = "tinglash" if suhbatda else "kutish"
+        if joriy_holat != yangi_holat:
+            if yangi_holat == "kutish":
+                print("💤 Kutish rejimi (Jarvis deng).")
+            holat(yangi_holat)
 
-        if suhbatda:
-            gap = eshit(kutish=qoldi)                   # "Jarvis" shart emas
-        else:
-            gap = eshit(kutish=10, jim=True)            # faqat "Jarvis"ni kutamiz
-        if not gap:
-            if suhbatda and time.time() >= suhbat_tugashi:
-                print("💤 Kutish rejimiga qaytdim.")
+        kelgan = keyingi_gap(qoldi if suhbatda else 1.0)
+        if not kelgan:
             continue
+        manba, gap = kelgan
 
         chaqirildi, buyruq = chaqiruvni_ajrat(gap)
         if not chaqirildi:
-            if not suhbatda:
+            if manba == "ovoz" and not suhbatda:
                 continue                                # begona gap / qo'shiq — e'tibor bermaymiz
-            buyruq = gap
-        elif not buyruq:
-            gapir("Labbay, xo'jayin?")
+            buyruq = gap                                # yozilgan gapga "Jarvis" shart emas
+        ui_navbat.put(("siz", gap))
+        if not buyruq:
+            gapir(f"Labbay, {ISM}?")
             suhbat_tugashi = time.time() + SUHBAT_VAQTI
             continue
 
+        holat("o'ylash")
         media_boshlandi = False
-        if not bajar(buyruq):
+        try:
+            davom = bajar(buyruq)
+        except Exception as xato:
+            print(f"(Xato: {xato})")
+            gapir("Buyruqni bajarishda xato bo'ldi.")
+            davom = True
+        if not davom:
             break
 
         if media_boshlandi:
@@ -626,7 +809,12 @@ def ishga_tushir():
             print("💤 Musiqa qo'yildi, faqat Jarvis desangiz eshitaman.")
         else:
             suhbat_tugashi = time.time() + SUHBAT_VAQTI
+    ui_navbat.put(("yopil",))
 
 
 if __name__ == "__main__":
-    ishga_tushir()
+    import interfeys
+    oyna = interfeys.Oyna(ui_navbat, kirish_navbat)     # oyna — asosiy thread'da
+    threading.Thread(target=mikrofon_ishi, daemon=True).start()
+    threading.Thread(target=miya, daemon=True).start()
+    oyna.ishga_tushir()
