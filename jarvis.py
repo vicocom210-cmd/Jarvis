@@ -1725,10 +1725,10 @@ def miya():
         import uuid
         kanal = "jv-" + uuid.uuid4().hex[:12]
         sozlama_ozgartir("telefon_kanal", kanal, ayt=False)
-    holat = bulut.ishga_tushir(kanal, pin, web_bajar)
-    if holat == "ok":
+    bulut_holat = bulut.ishga_tushir(kanal, pin, web_bajar)
+    if bulut_holat == "ok":
         print(f"☁️ Internet orqali boshqarish — Kanal: {kanal}  (PIN: {pin})")
-    elif holat == "yoq_kutubxona":
+    elif bulut_holat == "yoq_kutubxona":
         print("☁️ Internet orqali boshqarish uchun: pip install paho-mqtt")
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
