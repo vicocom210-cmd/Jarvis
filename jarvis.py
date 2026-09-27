@@ -162,7 +162,8 @@ def chaqiruvni_ajrat(gap):
 def ai_javob(savol):
     """Faqat suhbat uchun. AI kompyuterda hech narsa bajarmaydi."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        return "Tushunmadim. Yordam desangiz, qanday buyruqlarni bilishimni aytaman."
+        return ("Tushunmadim, boshqacha so'zlar bilan aytib ko'ring. "
+                "Yordam desangiz, qanday buyruqlarni bilishimni aytaman.")
     try:
         import anthropic
         javob = anthropic.Anthropic().messages.create(
@@ -324,6 +325,24 @@ def kayfiyat_kotar(gap):
     youtube_ijro(KAYFIYAT_VIDEOLARI[tur])
 
 
+# ---------- 5.1.1. MUSIQA ----------
+UMUMIY_SOZLAR = {"bir", "biror", "bitta", "musiqa", "qo'shiq", "yaxshi", "zo'r", "menga",
+                 "kerak", "xohlayman", "istayman", "yoq", "ham"}
+
+
+def musiqa_qoy(gap):
+    """'babylon musiqasini qo'y' -> darhol qo'yadi.
+    'menga bir musiqa kerak' -> nom yo'q, shuning uchun qanaqasini so'raydi."""
+    soz = youtube_qidiruv_sozi(gap)
+    if not [s for s in soz.split() if s not in UMUMIY_SOZLAR]:
+        gapir("Qanaqa musiqa qo'yay? Qo'shiqchi yoki qo'shiq nomini ayting, "
+              "yoki quvnoq, sokin deng.")
+        javob = youtube_qidiruv_sozi(eshit())
+        soz = f"{javob} musiqa" if javob else "eng yaxshi o'zbek qo'shiqlari"
+    gapir(f"{soz} qo'yilmoqda.")
+    youtube_ijro(soz)
+
+
 # ---------- 5.2. USB FLESHKA ----------
 def usb_nusxala():
     disklar = kompyuter.usb_disklar()
@@ -480,8 +499,11 @@ def bajar(b):
     elif bor(b, "virus", "вирус"):
         virus_tekshir(b)
 
-    elif bor(b, "kesh", "кеш", "cache", "vaqtinchalik fayl", "musor", "axlat") and bor(
-            b, "tozala", "o'chir", "tozalab"):
+    elif bor(b, "tozala", "tozalab", "tozalash") or (
+            bor(b, "kesh", "кеш", "cache", "vaqtinchalik fayl", "musor", "axlat")
+            and bor(b, "o'chir")):
+        # Google "kesh"ni "kech", "kelish", "kesish" deb yozadi — shuning uchun
+        # "tozala" so'zining o'zi yetarli. O'chirishdan oldin baribir tasdiq so'raladi.
         keshni_tozala()
 
     elif bor(b, "usb", "юсб", "fleshka", "флешка", "flesh") and bor(
@@ -497,10 +519,9 @@ def bajar(b):
             webbrowser.open("https://youtube.com")
             gapir("YouTube ochildi.")
 
-    elif bor(b, "musiq", "qo'shiq", "qo'shig") and bor(b, "qo'y", "qo'", "ijro", "eshit"):
-        soz = youtube_qidiruv_sozi(b)
-        gapir(f"{soz} qo'yilmoqda.")
-        youtube_ijro(soz)
+    elif bor(b, "musiq", "qo'shiq", "qo'shig") and bor(b, "qo'y", "qo'", "ijro", "eshit",
+                                                       "kerak", "xohlayman", "istayman"):
+        musiqa_qoy(b)
 
     elif bor(b, "qidir"):
         soz = b
