@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Jarvis</title>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
 <style>
   :root{
     --yorqin:#4bd0ff; --xira:#1e5ad2; --binafsha:#8a6bff;
@@ -113,8 +114,10 @@
     <div class="chiplar" id="tillar"></div>
     <label id="s-rang">Rang</label>
     <div class="ranglar" id="ranglar"></div>
-    <label id="s-ip">Kompyuter IP manzili</label>
+    <label id="s-ip">Kompyuter IP manzili (uy Wi-Fi uchun)</label>
     <input id="ip" placeholder="192.168.1.5" inputmode="decimal">
+    <label id="s-kanal">Bulut kanali (istalgan joydan — Jarvis konsolida)</label>
+    <input id="kanal" placeholder="jv-...">
     <label id="s-pin">PIN kod</label>
     <input id="pin" placeholder="0000" inputmode="numeric">
     <label id="s-groq">Groq API kaliti (bepul)</label>
@@ -131,7 +134,7 @@ const TIL={
     salom:"Salom! Men Jarvisman. \"Jarvis\" deb chaqiring yoki yozing.",labbay:"Labbay! Sizga qanday yordam bera olaman?",
     yozing:"Savol yoki gap yozing...",buyruq:"Kompyuterga buyruq...",saqlandi:"Sozlamalar saqlandi ✅",
     sozlamalar:"Sozlamalar",til:"Til",rang:"Rang",ip:"Kompyuter IP manzili",pin:"PIN kod",
-    groq:"Groq API kaliti (bepul)",saqla:"Saqlash",aiyoq:"Suhbat uchun ⚙ da Groq kalitini kiriting.",
+    groq:"Groq API kaliti (bepul)",kanal:"Bulut kanali (internet)",saqla:"Saqlash",aiyoq:"Suhbat uchun ⚙ da Groq kalitini kiriting.",
     ipyoq:"Avval ⚙ da kompyuter IP manzilini kiriting.",ulanmadi:"Kompyuterga ulanolmadim.",
     system:"Sen Jarvis ismli o'zbek ovozli yordamchisan. Doim o'zbek tilida, qisqa (1-3 gap) javob ber."},
   ru:{nomi:"Русский",tl:"ru",suhbat:"Чат",kompyuter:"Компьютер",kutish:"Ожидание",
@@ -139,7 +142,7 @@ const TIL={
     salom:"Привет! Я Джарвис. Скажите \"Джарвис\" или напишите.",labbay:"Слушаю! Чем могу помочь?",
     yozing:"Напишите вопрос...",buyruq:"Команда компьютеру...",saqlandi:"Настройки сохранены ✅",
     sozlamalar:"Настройки",til:"Язык",rang:"Цвет",ip:"IP адрес компьютера",pin:"PIN код",
-    groq:"Groq API ключ (бесплатно)",saqla:"Сохранить",aiyoq:"Введите ключ Groq в ⚙.",
+    groq:"Groq API ключ (бесплатно)",kanal:"Облачный канал",saqla:"Сохранить",aiyoq:"Введите ключ Groq в ⚙.",
     ipyoq:"Сначала введите IP компьютера в ⚙.",ulanmadi:"Не удалось подключиться к компьютеру.",
     system:"Ты голосовой помощник Джарвис. Отвечай кратко (1-3 предложения) на русском."},
   en:{nomi:"English",tl:"en",suhbat:"Chat",kompyuter:"Computer",kutish:"Standby",
@@ -147,7 +150,7 @@ const TIL={
     salom:"Hi! I'm Jarvis. Say \"Jarvis\" or type.",labbay:"Yes! How can I help you?",
     yozing:"Type a question...",buyruq:"Command for computer...",saqlandi:"Settings saved ✅",
     sozlamalar:"Settings",til:"Language",rang:"Color",ip:"Computer IP address",pin:"PIN code",
-    groq:"Groq API key (free)",saqla:"Save",aiyoq:"Enter a Groq key in ⚙.",
+    groq:"Groq API key (free)",kanal:"Cloud channel",saqla:"Save",aiyoq:"Enter a Groq key in ⚙.",
     ipyoq:"Enter the computer IP in ⚙ first.",ulanmadi:"Couldn't reach the computer.",
     system:"You are Jarvis, a voice assistant. Answer briefly (1-3 sentences) in English."},
   de:{nomi:"Deutsch",tl:"de",suhbat:"Chat",kompyuter:"Computer",kutish:"Bereit",
@@ -155,7 +158,7 @@ const TIL={
     salom:"Hallo! Ich bin Jarvis. Sag \"Jarvis\" oder tippe.",labbay:"Ja! Wie kann ich helfen?",
     yozing:"Frage eingeben...",buyruq:"Befehl für den Computer...",saqlandi:"Gespeichert ✅",
     sozlamalar:"Einstellungen",til:"Sprache",rang:"Farbe",ip:"Computer-IP",pin:"PIN",
-    groq:"Groq API-Schlüssel (gratis)",saqla:"Speichern",aiyoq:"Groq-Schlüssel in ⚙ eingeben.",
+    groq:"Groq API-Schlüssel (gratis)",kanal:"Cloud-Kanal",saqla:"Speichern",aiyoq:"Groq-Schlüssel in ⚙ eingeben.",
     ipyoq:"Zuerst die Computer-IP in ⚙ eingeben.",ulanmadi:"Computer nicht erreichbar.",
     system:"Du bist Jarvis, ein Sprachassistent. Antworte kurz (1-3 Sätze) auf Deutsch."},
 };
@@ -167,7 +170,7 @@ const RANG={
 
 const S={ip:localStorage.getItem('ip')||'', pin:localStorage.getItem('pin')||'0000',
   groq:localStorage.getItem('groq')||'', til:localStorage.getItem('til')||'uz',
-  rang:localStorage.getItem('rang')||'kok'};
+  rang:localStorage.getItem('rang')||'kok', kanal:localStorage.getItem('kanal')||''};
 let L=TIL[S.til]||TIL.uz, rejim='suhbat', tarix=[], mikYoniq=true, gapiryapti=false, kutmoqda=false;
 
 function tilQoy(t){ S.til=t; L=TIL[t]||TIL.uz;
@@ -177,6 +180,7 @@ function tilQoy(t){ S.til=t; L=TIL[t]||TIL.uz;
   document.getElementById('s-til').textContent=L.til; document.getElementById('s-rang').textContent=L.rang;
   document.getElementById('s-ip').textContent=L.ip; document.getElementById('s-pin').textContent=L.pin;
   document.getElementById('s-groq').textContent=L.groq; document.getElementById('s-saqla').textContent=L.saqla;
+  document.getElementById('s-kanal').textContent=L.kanal||'Bulut kanali'; document.getElementById('s-pin').textContent=L.pin;
   matn.placeholder = rejim==='kompyuter'?L.buyruq:L.yozing;
   if(joriyHolat==='kutish') holatYoz(L.kutish);
 }
@@ -197,6 +201,7 @@ function tabTanla(t){ rejim=t; tab_s.classList.toggle('faol',t==='suhbat'); tab_
 function sozlamaOch(){
   const ip=document.getElementById('ip'),pin=document.getElementById('pin'),groq=document.getElementById('groq');
   ip.value=S.ip; pin.value=S.pin; groq.value=S.groq;
+  document.getElementById('kanal').value=S.kanal;
   const tl=document.getElementById('tillar'); tl.innerHTML='';
   for(const k in TIL){ const d=document.createElement('div'); d.className='chip'+(S.til===k?' faol':'');
     d.textContent=TIL[k].nomi; d.onclick=()=>{tilQoy(k); sozlamaOch();}; tl.appendChild(d); }
@@ -209,8 +214,9 @@ function sozlamaYop(){ document.getElementById('sozlama').classList.add('yashir'
 function sozlamaSaqla(){
   S.ip=document.getElementById('ip').value.trim(); S.pin=document.getElementById('pin').value.trim()||'0000';
   S.groq=document.getElementById('groq').value.trim();
-  for(const k of ['ip','pin','groq','til','rang']) localStorage.setItem(k,S[k]);
-  sozlamaYop(); pufak('jarvis',L.saqlandi);
+  S.kanal=document.getElementById('kanal').value.trim();
+  for(const k of ['ip','pin','groq','til','rang','kanal']) localStorage.setItem(k,S[k]);
+  sozlamaYop(); pufak('jarvis',L.saqlandi); mqttUlan();
 }
 
 function pufak(kim,txt){ const d=document.createElement('div'); d.className='pufak '+(kim==='men'?'men':'jarvis');
@@ -276,10 +282,33 @@ function bazaUrl(){
 }
 function kompyuterGa(t){
   setHolat('oylash'); holatYoz(L.yubor,true);
-  if(!S.ip){ javobBer(L.ipyoq); return; }
-  fetch(bazaUrl()+'/buyruq',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({pin:S.pin,matn:t})})
-    .then(r=>r.json()).then(d=>javobBer(d.ok?(d.javob||'✅'):('⚠ '+(d.xato||'')))).catch(()=>javobBer(L.ulanmadi));
+  if(S.ip){                                   // avval uy Wi-Fi (tez), bo'lmasa bulut
+    fetch(bazaUrl()+'/buyruq',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pin:S.pin,matn:t})})
+      .then(r=>r.json()).then(d=>javobBer(d.ok?(d.javob||'✅'):('⚠ '+(d.xato||''))))
+      .catch(()=>bulutGa(t));                 // Wi-Fi topilmadi -> internet orqali
+  } else if(S.kanal){ bulutGa(t); }
+  else { javobBer(L.ipyoq); }
+}
+
+// ---------- bulut (internet, istalgan joydan) ----------
+let mqc=null, mqttJavob=null;
+function mqttUlan(){
+  if(!S.kanal || typeof mqtt==='undefined') return;
+  try{ if(mqc){ mqc.end(true); } }catch(e){}
+  mqc=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{connectTimeout:8000, reconnectPeriod:4000});
+  mqc.on('connect',()=>mqc.subscribe('jarvis/'+S.kanal+'/reply'));
+  mqc.on('message',(top,msg)=>{ try{ const d=JSON.parse(msg.toString());
+    if(mqttJavob){ mqttJavob(d); } }catch(e){} });
+}
+function bulutGa(t){
+  if(!S.kanal){ javobBer(L.ipyoq); return; }
+  if(!mqc || !mqc.connected){ mqttUlan();
+    if(!mqc){ javobBer(L.ulanmadi); return; } }
+  const kut=setTimeout(()=>{ if(mqttJavob){ mqttJavob=null; javobBer(L.ulanmadi); } },14000);
+  mqttJavob=(d)=>{ clearTimeout(kut); mqttJavob=null;
+    javobBer(d.ok?(d.javob||'✅'):('⚠ '+(d.xato||''))); };
+  mqc.publish('jarvis/'+S.kanal+'/cmd', JSON.stringify({pin:S.pin,matn:t}));
 }
 function suhbatJavob(t){
   setHolat('oylash'); holatYoz(L.oyla,true);
@@ -323,6 +352,7 @@ tilQoy(S.til); rangQoy(S.rang); tabTanla('suhbat');
 requestAnimationFrame(chiz);
 pufak('jarvis',L.salom);
 setTimeout(davomTingla,1200);   // ochilgach o'zi tinglay boshlaydi
+mqttUlan();                      // internet ulanishni tayyorlaymiz
 </script>
 </body>
 </html>

@@ -34,6 +34,7 @@ import speech_recognition as sr
 
 import bilim
 import boshqaruv
+import bulut
 import kompyuter
 import sozlamalar
 import suhbat
@@ -1717,7 +1718,18 @@ def miya():
     telegram_ishga_tushir()
     pin = str(SOZ.get("telefon_pin") or "0000")
     if server.ishga_tushir(web_bajar, pin):
-        print(f"📱 Telefon ilovasi uchun manzil: http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
+        print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
+    # Bulut ko'prigi — istalgan joydan ishlash uchun (bir Wi-Fi shart emas)
+    kanal = SOZ.get("telefon_kanal")
+    if not kanal:
+        import uuid
+        kanal = "jv-" + uuid.uuid4().hex[:12]
+        sozlama_ozgartir("telefon_kanal", kanal, ayt=False)
+    holat = bulut.ishga_tushir(kanal, pin, web_bajar)
+    if holat == "ok":
+        print(f"☁️ Internet orqali boshqarish — Kanal: {kanal}  (PIN: {pin})")
+    elif holat == "yoq_kutubxona":
+        print("☁️ Internet orqali boshqarish uchun: pip install paho-mqtt")
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
