@@ -129,6 +129,11 @@ YOZUVLAR["uz"].update({
                     "3. Tokenni nusxalab, yuqoridagi maydonga qo'ying (Ctrl+V) va Saqlash bosing.",
                     "4. O'z botingizni oching va ekranda chiqqan 6 xonali kodni yuboring.",
                     "Tayyor! Endi botga yozing: \"yuklamalardagi rasmlarni tashla\"."]})
+YOZUVLAR["uz"].update({"ong_tugma": "Sozlamalarni ochish: Jarvis ustida sichqonchaning o'ng tugmasini bosing.",
+                       "ochirish": "Jarvis'ni o'chirish"})
+YOZUVLAR["ru"].update({"ong_tugma": "Настройки: правый клик по Джарвису.", "ochirish": "Выключить Джарвиса"})
+YOZUVLAR["en"].update({"ong_tugma": "Settings: right-click on Jarvis.", "ochirish": "Turn off Jarvis"})
+YOZUVLAR["de"].update({"ong_tugma": "Einstellungen: Rechtsklick auf Jarvis.", "ochirish": "Jarvis beenden"})
 YOZUVLAR["ru"].update({"telefon": "Телефон", "telefon_izoh": "Управление с телефона через Telegram-бота.",
                        "tg_yoq": "Токен не указан", "tg_kod": "Ожидание — отправьте код боту",
                        "tg_ulangan": "Подключено", "tg_xato": "Неверный токен или нет интернета",
@@ -330,9 +335,28 @@ def shakllar_yasa(n):
     return natija
 
 
-def nuqta_rasmlari(koef=1.0):
-    """Oldindan chizilgan yumshoq porlovchi nuqtalar (kul rangda; keyin bo'yaladi).
-    [kattalik][yorqinlik] — har kadrda aylana chizishdan ancha tez."""
+def nuqta_rasmlari(koef=1.0, tiniq=False):
+    """Oldindan chizilgan nuqtalar (kul rangda; keyin bo'yaladi).
+    [kattalik][yorqinlik] — har kadrda aylana chizishdan ancha tez.
+    tiniq=True — asosiy oyna uchun: nuqtalar doim yorqin, chetlari aniq. Shaffof oynada
+    to'q piksellar ish stolida qora dog' bo'lib ko'rinadi, shuning uchun ular ishlatilmaydi."""
+    if tiniq:
+        rasmlar = []
+        for rad in (1.3 * koef, 1.8 * koef, 2.4 * koef):
+            qator = []
+            o_lcham = int(rad * 2) + 3
+            m = (o_lcham - 1) / 2
+            for daraja in range(8):
+                yorug = 150 + daraja * 15                     # 150..255 — hech qachon to'q emas
+                s = pygame.Surface((o_lcham, o_lcham))
+                s.fill((0, 0, 0))
+                for px in range(o_lcham):
+                    for py in range(o_lcham):
+                        if math.hypot(px - m, py - m) <= rad:
+                            s.set_at((px, py), (yorug,) * 3)
+                qator.append(s)
+            rasmlar.append(qator)
+        return rasmlar
     rasmlar = []
     for rad in (1.6 * koef, 2.3 * koef, 3.2 * koef):
         qator = []
@@ -472,11 +496,13 @@ class Oyna:
         self.shakllar = shakllar_yasa(NUQTALAR_SONI)
         self.shakl_nomi = SHAKLLAR[0]
         self.shakl_m = 0.0                # 0 = shar, 1 = to'liq shakl
-        self.rasmlar_to_plami = {"kichik": nuqta_rasmlari(1.0), "katta": nuqta_rasmlari(1.35)}
+        self.rasmlar_to_plami = {"kichik": nuqta_rasmlari(1.0, tiniq=True),
+                                 "katta": nuqta_rasmlari(1.35, tiniq=True),
+                                 "soz": nuqta_rasmlari(1.0), "soz_katta": nuqta_rasmlari(1.35)}
 
         f = "segoeui,arial"
-        self.shrift = pygame.font.SysFont(f, 15)
-        self.shrift_kichik = pygame.font.SysFont(f, 12)
+        self.shrift = pygame.font.SysFont(f, 16)
+        self.shrift_kichik = pygame.font.SysFont(f, 13)
         self.shrift_yozuv = pygame.font.SysFont(f, 16)
         self._matn_xotira = {}
         self.yozuv_nur = 0.0
@@ -546,7 +572,7 @@ class Oyna:
         if self.rejim == "sozlama":
             self.soz_fon = self._sozlama_foni(eni, boyi)
             self.kontent = pygame.Surface((eni, boyi), pygame.SRCALPHA)
-            self.rasmlar = self.rasmlar_to_plami["kichik"]
+            self.rasmlar = self.rasmlar_to_plami["soz"]
             self.R0 = int(34 * self.sk)
             self.yadro = yadro_nuri(self.R0)
             self.shar_qatlami = pygame.Surface((int(self.R0 * 3.2), int(self.R0 * 3.2)))
@@ -661,6 +687,8 @@ class Oyna:
         for h in pygame.event.get():
             if h.type == pygame.QUIT:
                 self.ishlayapti = False
+            elif h.type == pygame.MOUSEBUTTONDOWN and h.button == 3 and self.rejim != "sozlama":
+                self.sozlamani_och()                     # o'ng tugma — sozlamalar
             elif h.type == pygame.MOUSEBUTTONDOWN and h.button == 1:
                 if self.rejim == "sozlama":
                     self.sozlamada_bosildi(h.pos)
@@ -681,12 +709,6 @@ class Oyna:
                     self.tugma_bosildi(h)
 
     def bosildi(self, joy):
-        if self.yopish_joyi.collidepoint(joy):
-            self.ishlayapti = False
-            return
-        if self.sozlama_joyi.collidepoint(joy):
-            self.sozlamani_och()
-            return
         if self.yuborish_joyi.collidepoint(joy):
             matn = self.matnlar["yozuv"].strip()
             if matn:
@@ -719,6 +741,8 @@ class Oyna:
         if tur == "yopish":
             self.sozlama_ochiq = False
             self.faol = None
+        elif tur == "jarvis_ochir":
+            self.ishlayapti = False
         elif tur == "bolim" and qiymat != self.bolim:
             self.bolim, self.bolim_t, self.faol = qiymat, 0.0, None
         elif tur in ("ovoz", "til", "rang"):
@@ -857,7 +881,7 @@ class Oyna:
 
         # ichki yumshoq nur — shaklga o'tganda so'nadi
         yr = int(R * 1.1)
-        if m < 0.95:
+        if yadro is not None and m < 0.95:
             yadro_ = pygame.transform.smoothscale(yadro, (yr * 2, yr * 2))
             if m > 0.01:
                 q_ = int(255 * (1 - m))
@@ -872,9 +896,12 @@ class Oyna:
         # katta bo'lib chiqish: 0.6 dan 1.0 gacha silliq kattalashadi
         ochilish = 1 - (1 - self.kirish) ** 3
         R = self.R0 * self.kattalik * (0.6 + 0.4 * ochilish)
-        self.zarrachalar(q, cx, cy, R, self.rasmlar, self.yadro, vaqt)
+        self.zarrachalar(q, cx, cy, R, self.rasmlar, None, vaqt)     # ichki nursiz — to'q dog' bo'lmasin
         # kul rangdagi rasmni holat rangiga bo'yaymiz
         q.fill(tuple(int(c) for c in self.rang), special_flags=pygame.BLEND_MULT)
+        # Deyarli qora piksellarni butunlay qora (= shaffof) qilamiz: aks holda ish stolida
+        # shar atrofida to'q dog' ko'rinadi. Nuqtalar tiniqroq bo'ladi.
+        q.fill((22, 22, 22), special_flags=pygame.BLEND_SUB)
         self.ekran.blit(q, (0, 0), special_flags=pygame.BLEND_ADD)
 
     # ----- asosiy oyna yozuvlari -----
@@ -912,80 +939,71 @@ class Oyna:
             pygame.draw.circle(self.ekran, rang, c, 5, 2)
 
     def soyali_matn(self, matn, shrift, rang):
-        """Ramkasiz matn: atrofida ingichka to'q soya — har qanday fonda o'qiladi.
+        """Tiniq matn: silliqlashsiz (shaffof fonda xiralashmaydi) va 1 piksel ingichka
+        to'q chegara — och fonda ham, to'q fonda ham aniq o'qiladi.
         Tayyor rasm xotirada saqlanadi (har kadrda qayta chizmaslik uchun)."""
         kalit = (matn, rang, id(shrift))
         yuza = self._matn_xotira.get(kalit)
         if yuza is None:
-            asosiy = shrift.render(matn, True, rang)
-            soya = shrift.render(matn, True, (6, 10, 18))
-            yuza = pygame.Surface((asosiy.get_width() + 4, asosiy.get_height() + 4))
+            asosiy = shrift.render(matn, False, rang)
+            chegara = shrift.render(matn, False, (14, 18, 28))
+            yuza = pygame.Surface((asosiy.get_width() + 2, asosiy.get_height() + 2))
             yuza.fill((0, 0, 0))
             yuza.set_colorkey((0, 0, 0))
-            for dx in (0, 1, 2, 3, 4):
-                for dy in (0, 1, 2, 3, 4):
-                    if (dx, dy) != (2, 2):
-                        yuza.blit(soya, (dx, dy))
-            yuza.blit(asosiy, (2, 2))
+            for dx, dy in ((0, 1), (2, 1), (1, 0), (1, 2)):
+                yuza.blit(chegara, (dx, dy))
+            yuza.blit(asosiy, (1, 1))
             if len(self._matn_xotira) > 200:
                 self._matn_xotira.clear()
             self._matn_xotira[kalit] = yuza
         return yuza
 
     def yozish_joyi_chiz(self, sichqoncha, dt):
-        """Zamonaviy yozish joyi: to'liq yumaloq (kapsula), semizroq, shisha kabi,
-        bosilganda porlaydi; o'ngda yuborish tugmasi."""
+        """Zamonaviy yozish joyi (veb-saytlardagi kabi): to'liq yumaloq, tekis rang,
+        ingichka chegara; bosilganda chegara mavzu rangiga silliq o'tadi."""
         joy = self.yozuv_joyi
         faol = self.faol == "yozuv"
         yorqin = self.yorqin
-        self.yozuv_nur = aralashtir(self.yozuv_nur, 1.0 if faol else
-                                    (0.45 if joy.collidepoint(sichqoncha) else 0.0), min(1.0, dt * 10))
+        ustida = joy.collidepoint(sichqoncha)
+        self.yozuv_nur = aralashtir(self.yozuv_nur, 1.0 if faol else (0.35 if ustida else 0.0),
+                                    min(1.0, dt * 10))
         r = joy.h // 2
-        # tashqi nur (faol bo'lsa kuchliroq)
-        for i in range(3, 0, -1):
-            kuch = self.yozuv_nur * (0.22 / i)
-            rang = tuple(max(1, int(c * kuch)) for c in yorqin)
-            pygame.draw.rect(self.ekran, rang, joy.inflate(i * 4, i * 4), border_radius=r + i * 2)
-        # shisha ichi: yuqorisi biroz yorug'roq
-        pygame.draw.rect(self.ekran, (9, 14, 26), joy, border_radius=r)
-        yuqori = pygame.Rect(joy.x + r // 2, joy.y + 2, joy.w - r, joy.h // 2 - 2)
-        pygame.draw.rect(self.ekran, (14, 21, 37), yuqori, border_radius=joy.h // 4)
-        chegara = rang_aralashtir((40, 60, 95), yorqin, 0.35 + 0.65 * self.yozuv_nur)
-        pygame.draw.rect(self.ekran, tuple(int(c) for c in chegara), joy, 2, border_radius=r)
+        fon = rang_aralashtir((24, 29, 40), (30, 36, 50), self.yozuv_nur)
+        pygame.draw.rect(self.ekran, tuple(int(c) for c in fon), joy, border_radius=r)
+        chegara = rang_aralashtir((58, 66, 84), yorqin, self.yozuv_nur)
+        pygame.draw.rect(self.ekran, tuple(int(c) for c in chegara), joy,
+                         2 if faol else 1, border_radius=r)
 
-        # chapda mikrofon belgisi
-        mx, my = joy.x + 24, joy.centery
-        mrang = tuple(int(c) for c in rang_aralashtir((90, 110, 140), yorqin, self.yozuv_nur))
-        pygame.draw.rect(self.ekran, mrang, (mx - 4, my - 9, 8, 13), border_radius=4)
-        pygame.draw.arc(self.ekran, mrang, (mx - 8, my - 6, 16, 14), math.pi, 2 * math.pi, 2)
-        pygame.draw.line(self.ekran, mrang, (mx, my + 8), (mx, my + 11), 2)
+        # chapda qidiruv (lupa) belgisi
+        lx, ly = joy.x + 22, joy.centery - 1
+        lrang = tuple(int(c) for c in rang_aralashtir((130, 140, 160), yorqin, self.yozuv_nur))
+        pygame.draw.circle(self.ekran, lrang, (lx, ly), 6, 2)
+        pygame.draw.line(self.ekran, lrang, (lx + 4, ly + 4), (lx + 8, ly + 8), 2)
 
-        # o'ngda yuborish tugmasi (doira ichida o'q)
-        self.yuborish_joyi = pygame.Rect(joy.right - joy.h + 5, joy.y + 5, joy.h - 10, joy.h - 10)
+        # o'ngda yuborish tugmasi — faqat matn yozilganda yorishadi
+        self.yuborish_joyi = pygame.Rect(joy.right - joy.h + 6, joy.y + 6, joy.h - 12, joy.h - 12)
         yj = self.yuborish_joyi
-        ustida = yj.collidepoint(sichqoncha)
         bor_matn = bool(self.matnlar["yozuv"].strip())
-        trang = yorqin if bor_matn else (35, 50, 80)
-        if ustida and bor_matn:
-            trang = rang_aralashtir(yorqin, (255, 255, 255), 0.3)
-        pygame.draw.circle(self.ekran, tuple(int(c) for c in trang), yj.center, yj.w // 2)
-        cx, cy = yj.center
-        orang = (10, 16, 28) if bor_matn else (90, 110, 140)
-        pygame.draw.line(self.ekran, orang, (cx, cy + 6), (cx, cy - 6), 2)
-        pygame.draw.lines(self.ekran, orang, False, [(cx - 5, cy - 1), (cx, cy - 6), (cx + 5, cy - 1)], 2)
+        if bor_matn:
+            trang = rang_aralashtir(yorqin, (255, 255, 255), 0.25 if yj.collidepoint(sichqoncha) else 0)
+            pygame.draw.circle(self.ekran, tuple(int(c) for c in trang), yj.center, yj.w // 2)
+            cx, cy = yj.center
+            pygame.draw.line(self.ekran, (16, 20, 30), (cx, cy + 6), (cx, cy - 6), 2)
+            pygame.draw.lines(self.ekran, (16, 20, 30), False,
+                              [(cx - 5, cy - 1), (cx, cy - 6), (cx + 5, cy - 1)], 2)
 
         # matn
         matn = self.matnlar["yozuv"]
-        chap = joy.x + 44
+        chap = joy.x + 40
         eni = yj.x - chap - 8
         if matn or faol:
             while self.shrift_yozuv.size(matn)[0] > eni and matn:
                 matn = matn[1:]
             kursor = "|" if faol and int(time.time() * 2) % 2 == 0 else ""
-            yuza = self.shrift_yozuv.render(matn + kursor, True, (230, 238, 250))
+            yuza = self.shrift_yozuv.render(matn + kursor, True, (236, 240, 248), fon)
         else:
-            yuza = self.shrift_yozuv.render(self.y("yozing"), True, (95, 115, 150))
-            while yuza.get_width() > eni and self.shrift_yozuv.size("…")[0] < eni:
+            yuza = self.shrift_yozuv.render(self.y("yozing"), True, (120, 130, 150), fon)
+            if yuza.get_width() > eni:
                 yuza = yuza.subsurface((0, 0, eni, yuza.get_height()))
         self.ekran.blit(yuza, (chap, joy.centery - yuza.get_height() // 2))
 
@@ -998,7 +1016,7 @@ class Oyna:
         qatorlar = []
         if self.siz_matni:
             for qator in matnni_bol(self.shrift, self.siz_matni, maydon.w - 16, 2):
-                qatorlar.append((qator, (175, 188, 210)))
+                qatorlar.append((qator, (205, 214, 230)))
         if self.jarvis_matni:
             qolgan = max(1, (maydon.h - len(qatorlar) * 20) // 20)
             for qator in matnni_bol(self.shrift, self.jarvis_matni, maydon.w - 16, qolgan):
@@ -1011,12 +1029,9 @@ class Oyna:
 
         self.yozish_joyi_chiz(sichqoncha, dt)
 
-        yuza = self.soyali_matn(self.y(self.holat), self.shrift_kichik,
-                                tuple(int(c * 0.8) for c in yorqin))
+        yuza = self.soyali_matn(self.y(self.holat), self.shrift_kichik, yorqin)
         self.ekran.blit(yuza, (self.eni // 2 - yuza.get_width() // 2, self.holat_y - 9))
 
-        self.kichik_tugma(self.yopish_joyi, "x", sichqoncha)
-        self.kichik_tugma(self.sozlama_joyi, "g", sichqoncha)
 
     # ----- SOZLAMALAR ILOVASI -----
     def tugma(self, tid, joy):
@@ -1258,7 +1273,7 @@ class Oyna:
         oq = self.oldindan_qatlam
         oq.fill((0, 0, 0))
         oc = oq.get_width() // 2
-        self.zarrachalar(oq, oc, oc, R, self.rasmlar_to_plami["katta"], self.oldindan_yadro, vaqt)
+        self.zarrachalar(oq, oc, oc, R, self.rasmlar_to_plami["soz_katta"], self.oldindan_yadro, vaqt)
         oq.fill(tuple(int(v) for v in holat_rangi("tinglash", self.sozlama["rang"])),
                 special_flags=pygame.BLEND_MULT)
         px = x0 + 3 * (ke + int(22 * sk)) + int(40 * sk)
@@ -1341,10 +1356,18 @@ class Oyna:
 
     def bolim_haqida(self, c, x0, y0, dt, sichqoncha, vaqt):
         sk = self.sk
-        for i, qator in enumerate(self.y("haqida_matn")):
+        qatorlar = self.y("haqida_matn") + [self.y("ong_tugma")]
+        for i, qator in enumerate(qatorlar):
             y = y0 + i * int(46 * sk)
             pygame.draw.circle(c, self.yorqin, (x0 + int(8 * sk), y + int(12 * sk)), int(4 * sk))
             c.blit(self.sh["matn"].render(qator, True, (205, 215, 235)), (x0 + int(28 * sk), y))
+        yuza = self.sh["tugma"].render(self.y("ochirish"), True, (255, 170, 170))
+        joy = pygame.Rect(x0, y0 + len(qatorlar) * int(46 * sk) + int(20 * sk),
+                          yuza.get_width() + int(56 * sk), int(48 * sk))
+        t = self.tugma("jarvis_ochir", joy)
+        t.yangila(dt, sichqoncha)
+        k = self.karta(c, t, False, radius=joy.h // 2)
+        c.blit(yuza, (k.centerx - yuza.get_width() // 2, k.centery - yuza.get_height() // 2))
 
     # ----- asosiy sikl -----
     def ishga_tushir(self):

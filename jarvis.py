@@ -302,6 +302,7 @@ def sozlama_ozgartir(kalit, qiymat, ayt=True):
 
 
 # ---------- 2.2. TELEGRAM BOT (telefondan boshqarish) ----------
+oxirgi_manba = ""                 # hozirgi buyruq qayerdan keldi: ovoz, yozuv, telegram, uzish
 bot = None                        # ishlab turgan Telegram bot
 javob_telegramga = False          # hozirgi buyruq telefondan keldimi (javob ham o'sha yoqqa)
 
@@ -449,6 +450,54 @@ def bosish_buyrugimi(gap):
     sozlar = gap.split()
     return any(s in BOS_SOZLARI for s in sozlar) and (bor(gap, "tugma", "knopka", "кнопк", "button")
                                                       or len(sozlar) <= 6)
+
+
+def telegram_xabar_qismlari(gap):
+    """'telegramdan "my bro" ga salom deb yoz' -> ('my bro', 'salom')
+    'telegramda alisherga ertaga boraman deb yoz' -> ('alisher', 'ertaga boraman')"""
+    sozlar = gap.split()
+    boshi = next((i for i, s in enumerate(sozlar) if s.startswith(("telegram", "телеграм"))), -1)
+    oxiri = len(sozlar) - 1 - sozlar[::-1].index("deb")
+    orta = " ".join(sozlar[boshi + 1:oxiri]).strip()
+    qoshtirnoq = re.match(r'["“«]([^"”»]+)["”»]\s*(?:ga|ni|ning)?\s*(.*)$', orta)
+    if qoshtirnoq:
+        xabar = qoshtirnoq.group(2).split()
+        if xabar and xabar[0].startswith(("guruh", "gurux", "kanal", "chat")):
+            xabar = xabar[1:]                          # "«bikent 48» guruhiga salom" -> "salom"
+        return qoshtirnoq.group(1).strip(), " ".join(xabar)
+    orta = orta.split()
+    for j, s in enumerate(orta):
+        if s == "ga" and j > 0:                            # "my bro ga salom"
+            return " ".join(orta[:j]), " ".join(orta[j + 1:])
+        if s.endswith("ga") and len(s) > 3:                # "alisherga salom"
+            return " ".join(orta[:j] + [s[:-2]]), " ".join(orta[j + 1:])
+    return None, None
+
+
+def telegramda_yoz(gap):
+    nom, xabar = telegram_xabar_qismlari(gap)
+    if not nom or not xabar:
+        gapir("Kimga va nima deb yozay? Masalan: telegramdan Alisherga salom deb yoz.")
+        return
+    for kalit, haqiqiy in TELEGRAM_NOMLAR.items():        # noto'g'ri eshitilgan nomlarni to'g'rilaymiz
+        if kalit in nom:
+            nom = haqiqiy
+    # Ovoz bilan aytilgan bo'lsa — Google noto'g'ri eshitgan bo'lishi mumkin, so'rab olamiz
+    if oxirgi_manba == "ovoz" and not tasdiqla(f"Telegramda {nom} ga {xabar} deb yozaymi?"):
+        gapir("Bekor qilindi.")
+        return
+    jarvisni_yashir(10)                                  # klaviatura Telegram'ga borsin
+    telegram_och()
+    telegram_chat_och(nom)
+    time.sleep(1.5)
+    pyperclip.copy(xabar)
+    pyautogui.hotkey("ctrl", "v")
+    time.sleep(0.3)
+    pyautogui.press("enter")
+    time.sleep(1)
+    gapir(f"{nom} ga yozildi: {xabar}")
+    telegramga_ekran()                                   # telefonda natijani ko'rasiz
+    ui_navbat.put(("korsat",))
 
 
 def tugma_nomi(gap):
@@ -934,13 +983,18 @@ def _virus_fonda(disklar):
 
 
 # ---------- 5.5. ILOVALAR ----------
+KOMPYUTER_SOZLARI = ("kompyuter", "kampyuter", "kampiyuter", "komputer", "kompiyuter",
+                     "kampuyter", "компьютер")
+ALOHIDA_QOSHIMCHALAR = {"ni", "di", "ga", "da", "dan", "ning", "ham", "u", "bu"}
+
+
 def ilova_nomi(gap):
-    """'photoshopni ochib ber' -> 'photoshop'"""
+    """'photoshopni ochib ber' -> 'photoshop';  'kampiyuterimdan proton vpn ni och' -> 'proton vpn'"""
     ortiqcha = ("och", "ishga", "tushir", "dastur", "ilova", "programma", "menga",
-                "iltimos", "ber", "yoq")
+                "iltimos", "ber", "yoq") + KOMPYUTER_SOZLARI
     sozlar = []
     for s in gap.split():
-        if s.startswith(ortiqcha):
+        if s.startswith(ortiqcha) or s in ALOHIDA_QOSHIMCHALAR:
             continue
         if len(s) > 4 and s.endswith(("ni", "ga")):
             s = s[:-2]
@@ -1070,6 +1124,10 @@ def bajar(b):
 
     elif bor(b, "ekran rasm", "skrinshot", "screenshot", "скриншот", "ekranni rasm"):
         ekran_rasmi()
+
+    elif bor(b, "telegram", "телеграм") and "deb" in b.split() \
+            and b.split()[-1].startswith(("yoz", "yubor", "jo'nat")):
+        telegramda_yoz(b)
 
     elif bosish_buyrugimi(b):
         tugma_bos(b)
@@ -1215,7 +1273,7 @@ def bajar(b):
 
 # ---------- ASOSIY SIKL (miya thread'i) ----------
 def miya():
-    global media_boshlandi, javob_telegramga
+    global media_boshlandi, javob_telegramga, oxirgi_manba
     ui_navbat.put(("sozlamalar", dict(SOZ)))
     telegram_ishga_tushir()
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
@@ -1241,6 +1299,7 @@ def miya():
                 continue                                # begona gap / qo'shiq — e'tibor bermaymiz
             buyruq = gap                                # yozilgan gapga "Jarvis" shart emas
         javob_telegramga = manba == "telegram"
+        oxirgi_manba = "ovoz" if manba == "uzish" else manba
         ui_navbat.put(("siz", ("(Telegram) " if javob_telegramga else "") + gap))
         if javob_telegramga and not buyruq:
             buyruq = "salom"
