@@ -15,9 +15,9 @@ import os
 import urllib.error
 import urllib.request
 
-# Groq bepul modellari — biri ishlamasa, keyingisi sinaladi
-GROQ_MODELLAR = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192",
-                 "gemma2-9b-it"]
+# Groq bepul modellari — biri ishlamasa, keyingisi sinaladi (eskirganlari olib tashlangan)
+GROQ_MODELLAR = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant",
+                 "meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-20b"]
 
 TIZIM = ("Sen Jarvis ismli shaxsiy ovozli yordamchisan. Foydalanuvchi ismi: {ism}. "
          "Hamisha {til_nomi} tilida, samimiy, qisqa (1-3 gap) javob ber. "
@@ -56,7 +56,7 @@ def _groq(savol, tizim):
     xabarlar.append({"role": "user", "content": savol})
     sarlavhalar = {"Authorization": "Bearer " + os.environ["GROQ_API_KEY"].strip(),
                    "Content-Type": "application/json"}
-    oxirgi_xato = None
+    xatolar = []
     for model in GROQ_MODELLAR:                              # biri ishlamasa, keyingisi
         try:
             natija = _sorov("https://api.groq.com/openai/v1/chat/completions",
@@ -64,10 +64,10 @@ def _groq(savol, tizim):
                              "temperature": 0.7}, sarlavhalar)
             return natija["choices"][0]["message"]["content"].strip()
         except RuntimeError as xato:
-            oxirgi_xato = xato
+            xatolar.append(f"{model}: {xato}")
             if "HTTP 401" in str(xato) or "invalid_api_key" in str(xato):
-                break                                       # kalit noto'g'ri — modelni almashtirish yordam bermaydi
-    raise oxirgi_xato
+                break                                       # kalit noto'g'ri — model almashtirish yordam bermaydi
+    raise RuntimeError(" | ".join(xatolar))
 
 
 def _gemini(savol, tizim):

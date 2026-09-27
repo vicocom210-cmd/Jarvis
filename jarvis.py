@@ -1226,18 +1226,27 @@ def _fayl_top_fonda(nom):
 
 # ---------- 5.7. SAVOLLARGA JAVOB ----------
 def javob_ber(gap):
-    """Savol bo'lsa — Vikipediyadan javob topadi. Topolmasa — Google'ni ochadi."""
-    if not bilim.savolmi(gap):
-        gapir(ai_javob(gap))
+    """AI kalit bo'lsa — hamma narsaga AI javob beradi (aqlliroq).
+    Kalit bo'lmasa — savolga Vikipediya, oddiy gapga tayyor suhbat."""
+    if sun_iy.bormi():                            # bepul/pullik AI ulangan
+        aqlli = sun_iy.javob(gap, ISM, til())
+        if aqlli:
+            gapir(aqlli, tarjima_qil=False)      # AI allaqachon kerakli tilda javob berdi
+            return
+        # AI ishlamadi — tayyor suhbat yoki Vikipediyaga qaytamiz
+    tayyor = suhbat.javob(gap, ISM)
+    if tayyor:
+        gapir(tayyor)
         return
-    javob, havola = bilim.javob_top(gap, til())
-    if javob:
-        gapir(javob, tarjima_qil=False)          # Vikipediya allaqachon shu tilda
-    elif os.environ.get("ANTHROPIC_API_KEY"):
-        gapir(ai_javob(gap))
+    if bilim.savolmi(gap):
+        javob, havola = bilim.javob_top(gap, til())
+        if javob:
+            gapir(javob, tarjima_qil=False)
+        else:
+            webbrowser.open(havola)
+            gapir("Aniq javob topa olmadim, Googledan qidirib ochdim.")
     else:
-        webbrowser.open(havola)
-        gapir("Vikipediyadan topa olmadim, Googledan qidirib ochdim.")
+        gapir(ai_javob(gap))
 
 
 YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga yozing. "
