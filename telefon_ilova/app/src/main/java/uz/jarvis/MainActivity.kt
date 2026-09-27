@@ -74,6 +74,10 @@ open class MainActivity : android.app.Activity() {
             != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
         }
+        // Fonda o'zi tinglaydigan eski xizmatni to'xtatamiz — endi faqat tugma bosilganda tinglaydi
+        if (!shaffof) {
+            try { stopService(Intent(this, OverlayService::class.java)) } catch (e: Exception) {}
+        }
         uygonTekshir(intent)
     }
 

@@ -232,11 +232,37 @@ def aks_sadomi(eshitilgan, jarvis_gapi):
     return mos / len(sozlar) >= 0.5
 
 
+def _variantlar(audio, til_kodi):
+    """Google bergan barcha taxminlar (eng ishonchlisi birinchi)."""
+    try:
+        javob = tanib.recognize_google(audio, language=til_kodi, show_all=True)
+    except sr.UnknownValueError:
+        return []
+    if not isinstance(javob, dict):
+        return []
+    return [a["transcript"] for a in javob.get("alternative", []) if a.get("transcript")]
+
+
+def _jarvis_bormi(matn):
+    return chaqiruvni_ajrat(normallashtir(matn))[0]
+
+
 def matnga_aylantir(audio, gapirganda=False, jarvis_gapi=""):
     try:
-        matn = tanib.recognize_google(audio, language=sozlamalar.TILLAR[til()]["google"])
-    except sr.UnknownValueError:
-        return
+        variantlar = _variantlar(audio, sozlamalar.TILLAR[til()]["google"])
+        matn = variantlar[0] if variantlar else ""
+        # Kutish rejimida "Jarvis"ni aniq ilg'ash: o'zbekcha tanishda "Jarvis" ko'pincha
+        # "kar", "dar" bo'lib chiqadi. Avval boshqa taxminlarga qaraymiz, bo'lmasa
+        # shu ovozni inglizcha ham tanib ko'ramiz ("Jarvis" — inglizcha ism).
+        if not gapirganda and joriy_holat == "kutish" and not _jarvis_bormi(matn):
+            topildi = next((v for v in variantlar if _jarvis_bormi(v)), None)
+            if topildi:
+                matn = topildi
+            elif any(_jarvis_bormi(v) for v in _variantlar(audio, "en-US")):
+                # "kar youtube och" -> "jarvis youtube och" (buzilgan birinchi so'z = Jarvis)
+                matn = "jarvis " + " ".join(matn.split()[1:])
+        if not matn.strip():
+            return
     except sr.RequestError:
         print("(Internet bilan muammo bor)")
         return

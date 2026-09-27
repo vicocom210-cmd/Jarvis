@@ -113,7 +113,7 @@
 <body>
 <div class="aura"></div>
 <div class="qatlam">
-  <header><div class="logo">J A R V I S</div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
+  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
   <canvas id="shar" width="240" height="196"></canvas>
   <div id="holat">Kompyuter pulti</div>
   <div id="oqim"></div>
@@ -157,15 +157,8 @@
       <input id="pin" placeholder="0000" inputmode="numeric" style="margin-top:12px">
       <div class="izoh" id="s-pin-iz">PIN kod (xavfsizlik uchun).</div>
     </div>
-    <div class="bolim">
-      <h4>🫧 <span id="s-suz">Suzuvchi rejim</span></h4>
-      <div class="chiplar">
-        <div class="chip" onclick="try{Android.suzuvchiYoq()}catch(e){}" id="s-suz-yoq">Yoqish</div>
-        <div class="chip" onclick="try{Android.suzuvchiOchir()}catch(e){}" id="s-suz-och">O'chirish</div>
-      </div>
-      <div class="izoh" id="s-suz-iz">Yoqilsa: boshqa ilovada "Jarvis" desangiz panel o'zi chiqadi.</div>
-    </div>
     <button class="knop" id="s-saqla" onclick="sozlamaSaqla()">Saqlash</button>
+    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.0</div>
   </div>
 </div>
 
