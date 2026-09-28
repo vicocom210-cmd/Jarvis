@@ -55,6 +55,7 @@ import arxiv
 import bilim
 import boshqaruv
 import bulut
+import kamera
 import kompyuter
 import qulayliklar
 import sozlamalar
@@ -113,7 +114,7 @@ def ovoz_nomi():
     return sozlamalar.TILLAR[til()][SOZ["ovoz"]]
 
 
-def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False):
+def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False, rasm=None):
     """Jarvis ichida hamma javob o'zbekcha yoziladi; boshqa til tanlangan bo'lsa,
     gapirishdan oldin o'sha tilga tarjima qilinadi.
     uzilmas=True — bu gapni bo'lib bo'lmaydi."""
@@ -122,7 +123,7 @@ def gapir(matn, tarjima_qil=True, ovoz=None, uzilmas=False):
         matn = tarjima(matn, "uz", til())
     print(f"Jarvis: {matn}")
     ui_navbat.put(("jarvis", matn))
-    arxiv.yoz("jarvis", matn)
+    arxiv.yoz("jarvis", matn, rasm=rasm)
     yiguvchi = getattr(web_holati, "yig", None)
     if yiguvchi is not None:        # buyruq telefon ilovasidan keldi — javobni to'playmiz
         yiguvchi.append(matn)
@@ -1126,6 +1127,73 @@ def eslatma_vaqti(ish, kechikdi=False):
     gapir(matn, uzilmas=True)
 
 
+# ---------- UY KAMERALARI (Hikvision) ----------
+kuzatuvchilar = {}                # kamera nomi -> kamera.Kuzatuvchi (harakatni kuzatish)
+
+
+def kameralar():
+    return [k for k in SOZ.get("kameralar", []) if k.get("ip")]
+
+
+def kamera_tanla(b):
+    """Gapda kamera nomi bo'lsa — o'sha ("hovlidagi kamera"), bo'lmasa birinchisi."""
+    royxat = kameralar()
+    for k in royxat:
+        nom = normallashtir(k.get("nom", ""))
+        if nom and (nom in b or nom[:max(4, len(nom) - 2)] in b):
+            return k
+    return royxat[0] if royxat else None
+
+
+def uy_kamera_rasmi(b):
+    """Uy kamerasidan rasm: chatda ko'rsatadi, AI bo'lsa — rasmda nima borligini aytadi,
+    telefondan so'ralgan bo'lsa — Telegram'ga yuboradi."""
+    k = kamera_tanla(b)
+    if not k:
+        gapir("Hali kamera qo'shilmagan. Chatdagi Sozlamalar, Kamera bo'limida qo'shing.")
+        return
+    gapir(f"{k['nom']} kamerasiga ulanyapman.")
+    yol, xato = kamera.rasm_ol(k)
+    if not yol:
+        gapir(f"Rasm ololmadim: {xato}.")
+        return
+    tavsif = sun_iy.rasm_tahlil(yol, "", til()) if sun_iy.bormi() else None
+    matn = f"📹 {k['nom']}: " + (tavsif or "hozirgi holat.")
+    telefondan = javob_telegramga or oxirgi_manba == "web"
+    if bot and bot.egasi and telefondan:
+        fonda(bot.rasm_yubor, yol, matn)
+        matn += " Rasmni Telegramga yubordim."
+    if oxirgi_manba in ("ovoz", "yozuv") and (chat_jarayon is None or chat_jarayon.poll() is not None):
+        chat_och()                                     # rasm chatda ko'rinadi
+    gapir(matn, tarjima_qil=not tavsif, rasm=yol)
+
+
+def kamera_harakat(k, yol):
+    """Kuzatuvchi harakat sezdi: chatga va Telegram'ga rasm bilan xabar."""
+    tavsif = sun_iy.rasm_tahlil(yol, "Uy kamerasi harakat sezdi. Kim yoki nima harakatlanyapti?",
+                                til()) if sun_iy.bormi() else None
+    matn = f"🚨 {k['nom']}: harakat sezildi! {datetime.datetime.now():%H:%M:%S}" + (f" — {tavsif}" if tavsif else "")
+    print(matn)
+    arxiv.yoz("jarvis", matn, "kamera", rasm=yol)
+    if bot and bot.egasi:
+        bot.rasm_yubor(yol, matn)
+    if SOZ.get("kamera_ovoz"):
+        gapir(f"Diqqat! {k['nom']} kamerasida harakat bor.", uzilmas=True)
+
+
+def kuzatuvni_yoq(yoqilsin=True):
+    """Barcha kameralarda harakatni kuzatishni yoqadi/o'chiradi. Nechta kamera kuzatilyapti — qaytaradi."""
+    for kuz in kuzatuvchilar.values():
+        kuz.toxtat()
+    kuzatuvchilar.clear()
+    if yoqilsin:
+        for k in kameralar():
+            kuzatuvchilar[k["nom"]] = kamera.Kuzatuvchi(k, kamera_harakat)
+    if SOZ.get("kamera_kuzatuv") != yoqilsin:
+        sozlama_ozgartir("kamera_kuzatuv", yoqilsin, ayt=False)   # qayta ishga tushganda ham davom etadi
+    return len(kuzatuvchilar)
+
+
 chat_jarayon = None               # chat oynasi (alohida jarayon)
 
 
@@ -1235,6 +1303,10 @@ def chat_sozlamalari():
         "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
         "avtostart": kompyuter.avtostart_bormi(),
         "papka": sozlamalar.PAPKA,
+        "kamera": {"royxat": [{"nom": k.get("nom", ""), "ip": k.get("ip", ""), "kanal": k.get("kanal", "101"),
+                               "login": k.get("login", "admin"), "kuzatilyapti": k.get("nom") in kuzatuvchilar}
+                              for k in kameralar()],
+                   "kuzatuv": bool(SOZ.get("kamera_kuzatuv")), "ovoz": bool(SOZ.get("kamera_ovoz"))},
         "mikrofon": {"holat": dict(MIK_HOLAT, oldin=int(time.time() - MIK_HOLAT["vaqt"])
                                    if MIK_HOLAT["vaqt"] else None),
                      "qurilmalar": [n for _, n in mikrofonlar()],
@@ -1265,6 +1337,43 @@ def chat_sozlama_yoz(kalit, qiymat):
     if kalit == "shahar" and qiymat in qulayliklar.SHAHARLAR:
         sozlama_ozgartir("shahar", qiymat, ayt=False)
         return True, f"Shahar: {qulayliklar.SHAHARLAR[qiymat][1]}."
+    if kalit == "kamera_qosh" and isinstance(qiymat, dict):
+        ip = str(qiymat.get("ip", "")).strip().replace("http://", "").replace("https://", "").strip("/")
+        if not re.fullmatch(r"[\w.-]+", ip):
+            return False, "IP manzilni to'g'ri kiriting, masalan: 192.168.1.64"
+        royxat = [k for k in SOZ.get("kameralar", []) if k.get("ip")]
+        nom = str(qiymat.get("nom") or "").strip()[:30] or f"Kamera {len(royxat) + 1}"
+        yangi = {"nom": nom, "ip": ip, "login": str(qiymat.get("login") or "admin").strip(),
+                 "parol": str(qiymat.get("parol") or ""), "kanal": str(qiymat.get("kanal") or "101").strip(),
+                 "http_port": int(qiymat.get("http_port") or 80), "rtsp_port": int(qiymat.get("rtsp_port") or 554)}
+        eski = next((k for k in royxat if k["nom"] == nom), None)
+        if eski and not yangi["parol"]:
+            yangi["parol"] = eski.get("parol", "")            # parol qayta yozilmasa — eskisi qoladi
+        royxat = [k for k in royxat if k["nom"] != nom] + [yangi]
+        sozlama_ozgartir("kameralar", royxat, ayt=False)
+        if kuzatuvchilar:
+            kuzatuvni_yoq(True)                               # yangi kamera ham kuzatilsin
+        return True, f"'{nom}' kamerasi saqlandi. Endi 'Sinash' tugmasini bosing."
+    if kalit == "kamera_ochir":
+        royxat = [k for k in SOZ.get("kameralar", []) if k.get("nom") != qiymat]
+        sozlama_ozgartir("kameralar", royxat, ayt=False)
+        if qiymat in kuzatuvchilar:
+            kuzatuvchilar.pop(qiymat).toxtat()
+        return True, "Kamera o'chirildi."
+    if kalit == "kamera_sina":
+        k = next((k for k in kameralar() if k["nom"] == qiymat), None)
+        if not k:
+            return False, "Kamera topilmadi."
+        yol, xato = kamera.rasm_ol(k)
+        if not yol:
+            return False, f"Ulanib bo'lmadi: {xato}."
+        return True, f"✅ '{k['nom']}' ishlayapti!", {"rasm": os.path.basename(yol)}
+    if kalit == "kamera_kuzatuv":
+        soni = kuzatuvni_yoq(bool(qiymat))
+        return True, (f"{soni} ta kamerada harakat kuzatilyapti." if qiymat else "Kuzatuv to'xtatildi.")
+    if kalit == "kamera_ovoz":
+        sozlama_ozgartir("kamera_ovoz", bool(qiymat), ayt=False)
+        return True, "Saqlandi."
     if kalit == "mikrofon":
         sozlama_ozgartir("mikrofon", str(qiymat or ""), ayt=False)
         mik_qayta.set()                                   # mikrofon qayta ochiladi
@@ -2034,6 +2143,29 @@ def bajar(b):
         else:
             gapir("Buni sozlay olmadim.")
 
+    # ----- uy kameralari -----
+    elif bor(b, "kuzat", "qo'riqla", "qoriqla", "qo'riqlash", "ohrana", "охран", "nazorat") \
+            and bor(b, "to'xtat", "toxtat", "o'chir", "ochir", "bekor", "yetarli") and not bor(b, "ekran"):
+        kuzatuvni_yoq(False)
+        gapir("Kamera kuzatuvi to'xtatildi.")
+
+    elif bor(b, "kuzat", "qo'riqla", "qoriqla", "ohrana", "охран", "harakatni sez") \
+            and bor(b, "kamera", "uy", "hovli", "harakat", "eshik", "qo'riqla", "qoriqla") and not bor(b, "ekran"):
+        if not kameralar():
+            gapir("Hali kamera qo'shilmagan. Chatdagi Sozlamalar, Kamera bo'limida qo'shing.")
+        else:
+            soni = kuzatuvni_yoq(True)
+            qosh = "" if (bot and bot.egasi) else " Telegram ulanmagan — xabarlar faqat chatda ko'rinadi."
+            gapir(f"{soni} ta kamerada harakatni kuzatyapman. Kimdir harakatlansa, rasm bilan xabar beraman.{qosh}")
+
+    elif kameralar() and (bor(b, "uy kamera", "hovli", "eshik old", "ko'cha", "hikvision", "kamerada",
+                               "uyda kim", "uyda nima", "kamerani ko'rsat", "kamerani och", "kamera rasm",
+                               *[normallashtir(k["nom"]) for k in kameralar() if len(k.get("nom", "")) > 3])
+                          or (bor(b, "kamera", "камера") and not bor(
+                              b, "kompyuter kamera", "veb", "webcam", "selfi", "selfie", "kim o'tiribdi",
+                              "kim otiribdi", "noutbuk"))):
+        uy_kamera_rasmi(b)
+
     # ----- kundalik qulayliklar -----
     elif bor(b, "shahrim", "men yashaydigan shahar") and qulayliklar.shahar_top(b, "")[0]:
         shahar, nomi = qulayliklar.shahar_top(b, "")
@@ -2341,6 +2473,8 @@ def miya():
     ui_navbat.put(("sozlamalar", dict(SOZ)))
     telegram_ishga_tushir()
     eslatmalar = qulayliklar.Eslatmalar(eslatma_vaqti)     # eski eslatmalar ham tiklanadi
+    if SOZ.get("kamera_kuzatuv") and kameralar():
+        print(f"📹 Kamera kuzatuvi davom etyapti: {kuzatuvni_yoq(True)} ta kamera")
     pin = str(SOZ.get("telefon_pin") or "0000")
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
     threading.Thread(target=internetni_kuzat, daemon=True).start()

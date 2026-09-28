@@ -33,7 +33,8 @@ RANGLAR = {
 STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
             "telegram_token": "", "telegram_egasi": 0, "telefon_adres": "", "telefon_pin": "0000",
             "telefon_kanal": "", "shahar": "toshkent", "chat_avto": True,
-            "groq_kalit": "", "mikrofon": "", "sezgirlik": 3}
+            "groq_kalit": "", "mikrofon": "", "sezgirlik": 3,
+            "kameralar": [], "kamera_kuzatuv": False, "kamera_ovoz": False}
 
 
 def yukla():

@@ -146,6 +146,10 @@
     box-shadow:0 10px 30px rgba(0,0,0,.4);transition:.25s;pointer-events:none;z-index:9}
   .xabarcha.bor{opacity:1;transform:translateX(-50%)} .xabarcha.xato{border-color:#ff6b6b;color:#ffb3b3}
   a{color:var(--yorqin)}
+  .kamera-rasm{display:block;max-width:min(560px,100%);border-radius:14px;margin-top:10px;cursor:zoom-in;
+    border:1px solid var(--chegara);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .rasm-parda{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;
+    z-index:20;cursor:zoom-out} .rasm-parda img{max-width:94vw;max-height:92vh;border-radius:10px}
 </style>
 </head>
 <body>
@@ -213,9 +217,16 @@ function xabarQosh(y){
   const p = document.createElement('div'); p.className='pufak'; p.textContent=y.matn;
   const m = document.createElement('div'); m.className='meta';
   m.textContent = vaqtMatn(y.vaqt) + (y.manba && MANBA[y.manba] ? '  ·  '+MANBA[y.manba] : '') + (y.sana && y.sana!==korilayotgan ? '  ·  '+y.sana : '');
-  q.appendChild(p); q.appendChild(m); d.appendChild(q);
+  q.appendChild(p);
+  if(y.rasm){ const r=document.createElement('img'); r.src='/api/rasm?f='+encodeURIComponent(y.rasm);
+    r.className='kamera-rasm'; r.title="Kattalashtirish uchun bosing"; r.onclick=()=>rasmKatta(r.src);
+    r.onload=oxirigaTush; q.appendChild(r); }
+  q.appendChild(m); d.appendChild(q);
   ichki.insertBefore(d, document.getElementById('yozmoqda'));
 }
+
+function rasmKatta(src){ const p=document.createElement('div'); p.className='rasm-parda';
+  const i=document.createElement('img'); i.src=src; p.appendChild(i); p.onclick=()=>p.remove(); document.body.appendChild(p); }
 
 function yozmoqdaQosh(){
   const d=document.createElement('div'); d.className='yozmoqda'; d.id='yozmoqda';
@@ -364,6 +375,52 @@ function mavzuQoy(s){                      // chat rangi Jarvis rang mavzusiga m
   const r = s && s.ranglar && s.ranglar[s.qiymatlar.rang]; if(!r) return;
   document.documentElement.style.setProperty('--yorqin', r.rang);
 }
+async function kameraSina(nom, joy){
+  joy.innerHTML=''; joy.appendChild(matnli('div','izoh','⏳ Kameraga ulanyapman...'));
+  try{
+    const r=await fetch('/api/sozlama',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kalit:'kamera_sina', qiymat:nom})});
+    const d=await r.json(); joy.innerHTML=''; xabarcha(d.xabar, !d.ok);
+    if(d.rasm){ const i=document.createElement('img'); i.className='kamera-rasm'; i.src='/api/rasm?f='+encodeURIComponent(d.rasm);
+      i.onclick=()=>rasmKatta(i.src); joy.appendChild(i); }
+    else joy.appendChild(matnli('div','izoh','⚠️ '+d.xabar)).style.color='#ffb3b3';
+  }catch(e){ joy.innerHTML=''; xabarcha("Jarvis bilan bog'lanib bo'lmadi", true); }
+}
+function kameraBolimi(ich, K){
+  if(!K) return;
+  const b=bolim('📹','Uy kameralari (Hikvision)',"Kamera va kompyuter bitta Wi-Fi/routerda bo'lsin. IP manzilni Hik-Connect ilovasida "+
+    "(qurilma → sozlamalar → tarmoq) yoki router sahifasida topasiz. Login odatda <b>admin</b>, parol — kamera paroli "+
+    "(Hik-Connect'dagi <b>tasdiqlash kodi</b> ham bo'lishi mumkin). Kanal: <b>1</b>; videoregistrator (NVR) bo'lsa — kamera raqami.");
+  for(const k of K.royxat){
+    const r=e('div','sozq'); const t=e('div');
+    t.appendChild(matnli('b','','📷 '+k.nom)); t.appendChild(matnli('small','',k.ip+' · kanal '+k.kanal+' · '+k.login+(k.kuzatilyapti?' · 🟢 kuzatilyapti':'')));
+    const tq=e('div','qator'); const sin=matnli('button','tugma','Sinash'); const och=matnli('button','tugma ikkinchi',"O'chirish");
+    const natija=e('div'); natija.style.width='100%';
+    sin.onclick=()=>kameraSina(k.nom, natija);
+    och.onclick=()=>{ if(confirm(k.nom+" kamerasini o'chiraymi?")) sozYoz('kamera_ochir',k.nom); };
+    tq.appendChild(sin); tq.appendChild(och); r.appendChild(t); r.appendChild(tq); b.appendChild(r); b.appendChild(natija);
+  }
+  // yangi kamera qo'shish
+  const f=e('div'); f.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px';
+  const m={}; for(const [k,bel,tur,qiy] of [['nom','Nomi (masalan: Hovli)','',''],['ip','IP manzil: 192.168.1.64','',''],
+      ['login','Login','','admin'],['parol','Parol','password',''],['kanal','Kanal','','1'],['http_port','HTTP port','','80']]){
+    const i=e('input','maydon'); i.placeholder=bel; i.value=qiy; if(tur) i.type=tur; m[k]=i; f.appendChild(i); }
+  b.appendChild(matnli('div','izoh',K.royxat.length?"Yana kamera qo'shish:":"Kamera qo'shish:")).style.margin='16px 0 0';
+  b.appendChild(f);
+  const qb=matnli('button','tugma',"➕ Qo'shish"); qb.style.marginTop='12px';
+  qb.onclick=()=>{ const q={}; for(const k in m) q[k]=m[k].value.trim(); sozYoz('kamera_qosh', q); };
+  b.appendChild(qb);
+  if(K.royxat.length){
+    for(const [kalit,sarl,izoh,qiymat] of [
+        ['kamera_kuzatuv','Harakatni kuzatish',"Kimdir harakatlansa — Telegram va chatga rasm bilan xabar (AI kim ekanini ham aytadi)",K.kuzatuv],
+        ['kamera_ovoz','Ovoz bilan ogohlantirish','Harakat bo\'lsa, Jarvis ovoz chiqarib aytadi',K.ovoz]]){
+      const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','',sarl)); t.appendChild(matnli('small','',izoh));
+      r.appendChild(t); r.appendChild(almashtirgich(qiymat,kalit)); b.appendChild(r); }
+    b.appendChild(e('div','izoh',"🎤 Buyruqlar: <b>\"kamerani ko'rsat\"</b>, <b>\"uyda kim bor\"</b>, <b>\"uyni qo'riqla\"</b>, <b>\"kuzatuvni to'xtat\"</b>")).style.marginTop='12px';
+  }
+  ich.appendChild(b);
+}
+
 function mikChiz(M){
   const joy=document.getElementById('mikBolim'); if(!joy || !M) return;
   const H=M.holat; joy.innerHTML='';
@@ -414,6 +471,8 @@ async function sozlamalarniYukla(){
   b.appendChild(oq); ich.appendChild(b);
 
   const mb=e('div'); mb.id='mikBolim'; ich.appendChild(mb); mikChiz(S.mikrofon);
+
+  kameraBolimi(ich, S.kamera);
 
   b=bolim('🌐','Til','Jarvis shu tilda eshitadi va gapiradi.');
   b.appendChild(tanlovlar(Object.entries(S.tillar),Q.til,'til')); ich.appendChild(b);

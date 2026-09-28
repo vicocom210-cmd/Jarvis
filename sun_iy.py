@@ -146,3 +146,43 @@ def tahrir(matn, til="uz"):
         if j and len(j) <= len(matn) * 2 + 40:
             return j
     return None
+
+
+# ---------- Rasmni ko'rib tushuntirish (kamera uchun) ----------
+KORISH_MODELI = "meta-llama/llama-4-scout-17b-16e-instruct"     # Groq — rasm ko'ra oladi, bepul
+
+
+def rasm_tahlil(yol, savol="", til="uz"):
+    """Rasmda nima borligini qisqa aytadi (masalan, kamerada kim bor). Kalit yo'q/xato — None."""
+    if not os.environ.get("GROQ_API_KEY"):
+        return None
+    import base64
+    try:
+        with open(yol, "rb") as f:
+            malumot = f.read()
+        if len(malumot) > 3_000_000:                  # Groq chegarasi — kichraytiramiz
+            try:
+                import cv2
+                rasm = cv2.imread(yol)
+                bal = 1280 / max(rasm.shape[:2])
+                ok, kod = cv2.imencode(".jpg", cv2.resize(rasm, None, fx=bal, fy=bal),
+                                       [cv2.IMWRITE_JPEG_QUALITY, 80])
+                malumot = kod.tobytes() if ok else malumot
+            except Exception:
+                return None
+        rasm_url = "data:image/jpeg;base64," + base64.b64encode(malumot).decode()
+        til_nomi = TIL_NOMLARI.get(til, "o'zbek")
+        vazifa = (savol or "Bu uy kamerasidan olingan rasm. Unda nima bor?") + (
+            f" {til_nomi} tilida 1-2 gapda javob ber: odamlar bormi (nechta, nima qilyapti), "
+            "hayvon yoki mashina bormi, shubhali narsa bormi. Aniq ko'rinmasa — shuni ayt.")
+        natija = _sorov("https://api.groq.com/openai/v1/chat/completions",
+                        {"model": KORISH_MODELI, "max_tokens": 200, "temperature": 0.2,
+                         "messages": [{"role": "user", "content": [
+                             {"type": "text", "text": vazifa},
+                             {"type": "image_url", "image_url": {"url": rasm_url}}]}]},
+                        {"Authorization": "Bearer " + os.environ["GROQ_API_KEY"].strip(),
+                         "Content-Type": "application/json"}, timeout=40)
+        return natija["choices"][0]["message"]["content"].strip()
+    except Exception as xato:
+        print(f"(Rasm tahlili xatosi: {xato})")
+        return None

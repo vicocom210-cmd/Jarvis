@@ -84,6 +84,21 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(tana)
         elif yol.path == "/api/sozlamalar":
             self._javob(200, {"ok": True, **(_sozlama_ol() if _sozlama_ol else {})})
+        elif yol.path == "/api/rasm":
+            # faqat kamera papkasidagi .jpg (boshqa fayllarni o'qib bo'lmasin)
+            nom = os.path.basename(q.get("f", [""])[0])
+            fayl = os.path.join(arxiv.sozlamalar.PAPKA, "kamera", nom)
+            if not nom.lower().endswith(".jpg") or not os.path.isfile(fayl):
+                self._javob(404, {"ok": False})
+                return
+            with open(fayl, "rb") as f:
+                tana = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(tana)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            self.wfile.write(tana)
         elif yol.path == "/api/kunlar":
             self._javob(200, {"ok": True, "kunlar": arxiv.kunlar()})
         elif yol.path == "/api/kun":
@@ -121,11 +136,15 @@ class _Handler(BaseHTTPRequestHandler):
                 if not _sozlama_yoz:
                     self._javob(503, {"ok": False, "xabar": "Jarvis tayyor emas"})
                     return
+                qoshimcha = {}
                 try:
-                    ok, xabar = _sozlama_yoz(str(malumot.get("kalit", "")), malumot.get("qiymat"))
+                    natija = _sozlama_yoz(str(malumot.get("kalit", "")), malumot.get("qiymat"))
+                    ok, xabar = natija[0], natija[1]
+                    if len(natija) > 2:
+                        qoshimcha = natija[2]                 # masalan, kamera sinovi rasmi
                 except Exception as xato:
                     ok, xabar = False, f"Xato: {xato}"
-                self._javob(200, {"ok": ok, "xabar": xabar})
+                self._javob(200, {"ok": ok, "xabar": xabar, **qoshimcha})
             elif self.path.startswith("/api/ochir"):
                 self._javob(200, {"ok": arxiv.ochir(malumot.get("sana", ""))})
             else:
