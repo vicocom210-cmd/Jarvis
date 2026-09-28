@@ -34,6 +34,9 @@ jobs:
         continue-on-error: true
         run: pip install shazamio
 
+      - name: Oyna sinovi (ustida turadimi, o'rtada chiqadimi)
+        run: python sinov_oyna.py
+
       - name: Belgi (ikonka) yasash
         run: python belgi_yasa.py
 

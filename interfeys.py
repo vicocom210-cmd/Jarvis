@@ -155,6 +155,37 @@ YOZUVLAR["de"].update({"telefon": "Telefon", "telefon_izoh": "Steuerung vom Hand
 
 
 # ---------- WINDOWS: shaffof fon, doim ustida, joylashuv ----------
+HWND_TOPMOST = -1
+
+
+def _u32():
+    """user32 funksiyalari TO'G'RI turlar bilan. Muhim: 64-bitli EXE'da turlarsiz chaqirilsa,
+    HWND_TOPMOST (-1) 32-bitli son bo'lib ketadi va Windows buyruqni rad etadi —
+    oyna na ustida turadi, na o'rtaga suriladi."""
+    import ctypes
+    import ctypes.wintypes as w
+    u = ctypes.windll.user32
+    if not getattr(u, "_jarvis_turlar", False):
+        u.SetWindowPos.argtypes = [w.HWND, w.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_int, ctypes.c_uint]
+        u.SetWindowPos.restype = w.BOOL
+        u.ShowWindow.argtypes = [w.HWND, ctypes.c_int]
+        u.GetWindowLongW.argtypes = [w.HWND, ctypes.c_int]
+        u.GetWindowLongW.restype = ctypes.c_long
+        u.SetWindowLongW.argtypes = [w.HWND, ctypes.c_int, ctypes.c_long]
+        u.SetWindowLongW.restype = ctypes.c_long
+        u.SetLayeredWindowAttributes.argtypes = [w.HWND, w.COLORREF, ctypes.c_ubyte, w.DWORD]
+        u.GetWindowRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
+        u._jarvis_turlar = True
+    return u
+
+
+def ustida_ushla():
+    """Oynani barcha ilovalar ustida ushlaydi (fokusni o'g'irlamasdan)."""
+    if os.name == "nt" and _hwnd():
+        _u32().SetWindowPos(_hwnd(), HWND_TOPMOST, 0, 0, 0, 0, 0x2 | 0x1 | 0x10)  # NOMOVE|NOSIZE|NOACTIVATE
+
+
 def _hwnd():
     try:
         return pygame.display.get_wm_info()["window"]
@@ -167,8 +198,7 @@ def windows_sozla(shaffoflik=255):
     shaffoflik (0..255) — butun oynaning ko'rinishi (sozlamalar silliq ochilishi uchun)."""
     if os.name != "nt":
         return
-    import ctypes
-    u32 = ctypes.windll.user32
+    u32 = _u32()
     hwnd = _hwnd()
     if not hwnd:
         return
@@ -176,25 +206,21 @@ def windows_sozla(shaffoflik=255):
     uslub = u32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     u32.SetWindowLongW(hwnd, GWL_EXSTYLE, uslub | WS_EX_LAYERED)
     u32.SetLayeredWindowAttributes(hwnd, 0x000000, int(shaffoflik), 0x1 | 0x2)  # COLORKEY | ALPHA
-    HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE = -1, 0x2, 0x1
-    u32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+    u32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, 0x2 | 0x1 | 0x10)   # NOMOVE|NOSIZE|NOACTIVATE
 
 
 def shaffoflik_ber(qiymat):
     if os.name == "nt" and _hwnd():
-        import ctypes
-        ctypes.windll.user32.SetLayeredWindowAttributes(_hwnd(), 0, int(qiymat), 0x1 | 0x2)
+        _u32().SetLayeredWindowAttributes(_hwnd(), 0, int(qiymat), 0x1 | 0x2)
 
 
 def oyna_korinishi(korinsin):
     """Oynani vaqtincha yashiradi yoki qayta ko'rsatadi (fokusni o'g'irlamasdan)."""
     if os.name != "nt" or not _hwnd():
         return
-    import ctypes
-    u32 = ctypes.windll.user32
-    u32.ShowWindow(_hwnd(), 4 if korinsin else 0)          # 4 = SW_SHOWNOACTIVATE, 0 = SW_HIDE
+    _u32().ShowWindow(_hwnd(), 4 if korinsin else 0)       # 4 = SW_SHOWNOACTIVATE, 0 = SW_HIDE
     if korinsin:
-        u32.SetWindowPos(_hwnd(), -1, 0, 0, 0, 0, 0x2 | 0x1 | 0x10)   # doim ustida, fokussiz
+        ustida_ushla()
 
 
 def ish_maydoni():
@@ -224,15 +250,14 @@ def oyna_joyi():
         import ctypes
         import ctypes.wintypes
         rect = ctypes.wintypes.RECT()
-        ctypes.windll.user32.GetWindowRect(_hwnd(), ctypes.byref(rect))
+        _u32().GetWindowRect(_hwnd(), ctypes.byref(rect))
         return rect.left, rect.top
     return 0, 0
 
 
 def oynani_sur(x, y):
     if os.name == "nt":
-        import ctypes
-        ctypes.windll.user32.SetWindowPos(_hwnd(), -1, int(x), int(y), 0, 0, 0x1)  # SWP_NOSIZE
+        _u32().SetWindowPos(_hwnd(), HWND_TOPMOST, int(x), int(y), 0, 0, 0x1 | 0x10)  # NOSIZE|NOACTIVATE
 
 
 def sichqoncha_ekranda():
@@ -877,6 +902,10 @@ class Oyna:
             oyna_korinishi(not yashirin)
             if not yashirin:
                 self.joy_tekshir_gacha = time.time() + 1.0   # qayta chiqdi — joyi to'g'rimi?
+        # Boshqa ilova ochilsa ham shar ustida tursin — vaqti-vaqti bilan qayta tiklaymiz
+        if not self.yashirin and time.time() - getattr(self, "_ustida_vaqt", 0) > 1.5:
+            ustida_ushla()
+            self._ustida_vaqt = time.time()
         # Oyna kerakli joyda (o'rtada) ekanini tekshiramiz — Windows/SDL siljitib qo'ysa, qaytaramiz
         if os.name == "nt" and not self.yashirin and time.time() < self.joy_tekshir_gacha \
                 and not self.surish and oyna_joyi() != tuple(self.kerakli_joy):
