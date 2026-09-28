@@ -1578,7 +1578,7 @@ def chat_sozlamalari():
         "avtostart": kompyuter.avtostart_bormi(),
         "papka": sozlamalar.PAPKA,
         "kamera": {"royxat": [{"nom": k.get("nom", ""), "ip": k.get("ip", ""), "kanal": k.get("kanal", "101"),
-                               "login": k.get("login", "admin"), "kuzatilyapti": k.get("nom") in kuzatuvchilar,
+                               "login": k.get("login", "admin"), "http_port": k.get("http_port", 80), "kuzatilyapti": k.get("nom") in kuzatuvchilar,
                                "eshik": k is eshik_kamerasi()}
                               for k in SOZ.get("kameralar", []) if k.get("ip")],
                    "kuzatuv": bool(SOZ.get("kamera_kuzatuv")), "ovoz": bool(SOZ.get("kamera_ovoz")),
@@ -1650,7 +1650,13 @@ def chat_sozlama_yoz(kalit, qiymat):
         eski = next((k for k in royxat if k["nom"] == nom), None)
         if eski and not yangi["parol"]:
             yangi["parol"] = eski.get("parol", "")            # parol qayta yozilmasa — eskisi qoladi
-        royxat = [k for k in royxat if k["nom"] != nom] + [yangi]
+        if eski:                                              # tahrirlash — o'rni o'zgarmaydi
+            for kalit_ in ("eshik",):
+                if kalit_ in eski:
+                    yangi[kalit_] = eski[kalit_]
+            royxat = [yangi if k is eski else k for k in royxat]
+        else:
+            royxat = royxat + [yangi]
         sozlama_ozgartir("kameralar", royxat, ayt=False)
         if kuzatuvchilar:
             kuzatuvni_yoq(True)                               # yangi kamera ham kuzatilsin

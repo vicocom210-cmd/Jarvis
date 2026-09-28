@@ -13,8 +13,10 @@ Hikvision manzillari:
 """
 import datetime
 import os
+import re
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -73,27 +75,94 @@ def _yangi_yol(k, qoshimcha=""):
     return os.path.join(papka, f"{nom}-{hozir:%H-%M-%S}-{hozir.microsecond // 1000:03d}{qoshimcha}.jpg")
 
 
-def _isapi_rasm(k, timeout=8):
-    """Hikvision ISAPI: kameradan tayyor JPG. Baytlar yoki None."""
+class BloklanganXato(PermissionError):
+    """Hikvision ko'p marta noto'g'ri paroldan keyin login'ni vaqtincha bloklaydi (odatda 30 daqiqa)."""
+
+
+def _bloklanganmi(tana):
+    """401/403 javobi ichida 'lock' / 'unlockTime' bo'lsa — blok. Qolgan daqiqalar (yoki 30) yoki None."""
+    if not re.search(r"lock|unlockTime", tana, re.I) or \
+            re.search(r"<lockStatus>\s*unlock\s*</lockStatus>", tana, re.I):
+        return None
+    son = re.search(r"<unlockTime>\s*(\d+)", tana)
+    return max(1, round(int(son.group(1)) / 60)) if son else 30
+
+
+def _isapi(k, yol, usul="GET", malumot=None, timeout=8):
+    """Hikvision ISAPI so'rovi (Digest yoki Basic). (kod, baytlar). Parol bilan faqat BIR marta
+    urinadi (urllib qayta-qayta urinib, kamerani bloklatib qo'ymasin) va xato javob matnini saqlaydi —
+    unda 'bloklangan' belgisi bo'ladi."""
     port = int(k.get("http_port") or 80)
     asos = f"http://{k['ip']}" + ("" if port == 80 else f":{port}")
-    parollar = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-    parollar.add_password(None, asos, str(k.get("login") or "admin"), str(k.get("parol") or ""))
-    ochuvchi = urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(parollar),
-                                           urllib.request.HTTPBasicAuthHandler(parollar))
+    login, parol = str(k.get("login") or "admin").strip(), str(k.get("parol") or "")
+    sarlavha = {"Content-Type": "application/xml"} if malumot is not None else {}
+
+    def yubor(auth=None):
+        sorov = urllib.request.Request(asos + yol, data=malumot, method=usul, headers=dict(sarlavha))
+        if auth:
+            sorov.add_unredirected_header("Authorization", auth)
+        try:
+            with urllib.request.urlopen(sorov, timeout=timeout) as javob:
+                return javob.status, javob.read(), javob.headers, sorov
+        except urllib.error.HTTPError as xato:
+            try:
+                tana = xato.read()
+            except Exception:
+                tana = b""
+            return xato.code, tana, xato.headers, sorov
+
+    kod, tana, sarl, sorov = yubor()
+    if kod != 401:
+        return kod, tana
+    chaqiriq = " ".join(sarl.get_all("WWW-Authenticate") or [])
+    if _bloklanganmi(tana.decode("utf-8", "ignore")):
+        return kod, tana
+    if re.search(r"\bdigest\b", chaqiriq, re.I):
+        qism = re.search(r"digest\s+(.*)", chaqiriq, re.I | re.S).group(1)
+        chal = urllib.request.parse_keqv_list(filter(None, urllib.request.parse_http_list(qism)))
+        parollar = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        parollar.add_password(None, asos, login, parol)
+        imzo = urllib.request.HTTPDigestAuthHandler(parollar).get_authorization(sorov, chal)
+        if not imzo:
+            return kod, tana
+        kod, tana, _, _ = yubor("Digest " + imzo)
+    else:
+        import base64
+        kod, tana, _, _ = yubor("Basic " + base64.b64encode(f"{login}:{parol}".encode()).decode())
+    return kod, tana
+
+
+def _isapi_rasm(k, timeout=8):
+    """Hikvision ISAPI: kameradan tayyor JPG. Baytlar yoki None.
+    Parol xato — PermissionError, login bloklangan — BloklanganXato."""
+    rad = None
     for yol in (f"/ISAPI/Streaming/channels/{_kanal(k)}/picture",
                 f"/Streaming/channels/{_kanal(k)}/picture"):             # eski proshivkalar
         try:
-            with ochuvchi.open(asos + yol, timeout=timeout) as javob:
-                malumot = javob.read()
-                if malumot[:2] == b"\xff\xd8":                         # haqiqatan JPG
-                    return malumot
-        except urllib.error.HTTPError as xato:
-            if xato.code == 401:
-                raise PermissionError("Login yoki parol noto'g'ri") from xato
-        except OSError:
+            kod, malumot = _isapi(k, yol, timeout=timeout)
+        except (OSError, ValueError):
             continue
+        if kod == 200 and malumot[:2] == b"\xff\xd8":                   # haqiqatan JPG
+            return malumot
+        if kod in (401, 403):
+            daqiqa = _bloklanganmi(malumot.decode("utf-8", "ignore"))
+            if daqiqa:                                  # boshqa yo'lni sinamaymiz — blok uzayadi
+                raise BloklanganXato(f"Kamera login'ni ~{daqiqa} daqiqaga BLOKLAGAN (ko'p marta noto'g'ri "
+                                     "parol kiritilgan). Shuncha kuting yoki kamerani o'chirib-yoqing")
+            if kod == 401:
+                qoldi = re.search(r"<retryLoginTime>\s*(\d+)", malumot.decode("utf-8", "ignore"))
+                raise PermissionError("Login yoki parol noto'g'ri" + (
+                    f" (kamera bloklanishiga {qoldi.group(1)} ta urinish qoldi)" if qoldi else ""))
+            rad = "Bu foydalanuvchiga rasm olishga ruxsat yo'q (HTTP 403)"
+    if rad:
+        raise PermissionError(rad)
     return None
+
+
+PAROL_MASLAHAT = ("Bu kameraning paroli boshqasinikidan farq qilishi mumkin: brauzerda http://{ip} ni ochib, "
+                  "shu login-parol bilan kirib ko'ring. Parol — kamera faollashtirilganda qo'yilgan parol yoki "
+                  "kamera yorlig'idagi 6 ta katta harfli tasdiqlash kodi (Verification code). "
+                  "To'g'ri parolni ✏️ tugmasi bilan kiriting")
 
 
 def _rtsp_kadr(k, yengil=False, timeout=12):
@@ -120,10 +189,13 @@ def rasm_ol(k):
     """Kameradan rasm oladi va saqlaydi. (yo'l, None) yoki (None, xato matni)."""
     if not k.get("ip"):
         return None, "Kamera IP manzili kiritilmagan"
+    kirish_xato = None
     try:
         malumot = _isapi_rasm(k)
+    except BloklanganXato as xato:
+        return None, str(xato)                       # RTSP ham sinalsa — blok uzayadi
     except PermissionError as xato:
-        return None, str(xato)
+        malumot, kirish_xato = None, str(xato)       # ba'zi kameralarda ISAPI yopiq, RTSP ishlaydi
     yol = _yangi_yol(k)
     if malumot:
         with open(yol, "wb") as f:
@@ -134,6 +206,8 @@ def rasm_ol(k):
         import cv2
         cv2.imwrite(yol, kadr)
         return yol, None
+    if kirish_xato:
+        return None, f"{kirish_xato}. " + PAROL_MASLAHAT.format(ip=k["ip"])
     return None, (f"{k['ip']} kameraga ulanib bo'lmadi. Kamera va kompyuter bitta tarmoqdami, "
                   "IP manzil to'g'rimi, tekshiring")
 
@@ -173,17 +247,33 @@ class Kuzatuvchi:
             print(f"(Odamni aniqlash modeli yuklanmadi: {xato}) — harakat bo'yicha xabar beraman")
             aniqlagich = None
         oxirgi_xabar = 0.0
+        muvaffaqiyatsiz, oxirgi_sabab = 0, None
         ketma = 0                                  # odam ketma-ket nechta kadrda ko'rindi
         while self.ishlasin:
             video = cv2.VideoCapture(rtsp_manzil(self.k, yengil=True), cv2.CAP_FFMPEG)
             if not video.isOpened():
-                self.holat_xabari(f"{self.k.get('nom', 'Kamera')}: ulanib bo'lmadi, 20 soniyadan keyin qayta urinaman")
                 video.release()
-                for _ in range(20):
+                muvaffaqiyatsiz += 1
+                kutish = min(20 * 2 ** (muvaffaqiyatsiz - 1), 600)     # 20s, 40s, 80s ... 10 daqiqagacha
+                sabab = "ulanib bo'lmadi"
+                try:
+                    _isapi_rasm(self.k, timeout=5)      # sababini bilib olamiz (parolmi, tarmoqmi)
+                except BloklanganXato as xato:
+                    sabab, kutish = str(xato), 1800     # bloklangan — urinish blokni uzaytiradi
+                except PermissionError as xato:
+                    sabab, kutish = str(xato), max(kutish, 600)   # parol xato — tez-tez urinsak bloklaydi
+                except Exception:
+                    pass
+                if sabab != oxirgi_sabab:               # bir xil xabarni qayta-qayta chiqarmaymiz
+                    self.holat_xabari(f"{self.k.get('nom', 'Kamera')}: {sabab}. "
+                                      f"{kutish // 60 or 1} daqiqadan keyin qayta urinaman")
+                    oxirgi_sabab = sabab
+                for _ in range(kutish):
                     if not self.ishlasin:
                         return
                     time.sleep(1)
                 continue
+            muvaffaqiyatsiz, oxirgi_sabab = 0, None
             fon = None
             oxirgi_tahlil = 0.0
             xatolar = 0
@@ -334,16 +424,10 @@ def jonli_kadrlar(k, fps=8, yengil=True, ishlasin=lambda: True):
 
 # ---------- ESHIKNI OCHISH ----------
 def _isapi_put(k, yol, xml, timeout=6):
-    port = int(k.get("http_port") or 80)
-    asos = f"http://{k['ip']}" + ("" if port == 80 else f":{port}")
-    parollar = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-    parollar.add_password(None, asos, str(k.get("login") or "admin"), str(k.get("parol") or ""))
-    ochuvchi = urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(parollar),
-                                           urllib.request.HTTPBasicAuthHandler(parollar))
-    sorov = urllib.request.Request(asos + yol, data=xml.encode("utf-8"), method="PUT",
-                                   headers={"Content-Type": "application/xml"})
-    with ochuvchi.open(sorov, timeout=timeout) as javob:
-        return javob.status, javob.read().decode("utf-8", "ignore")
+    kod, tana = _isapi(k, yol, "PUT", xml.encode("utf-8"), timeout=timeout)
+    if kod >= 400:
+        raise urllib.error.HTTPError(yol, kod, tana.decode("utf-8", "ignore")[:200], None, None)
+    return kod, tana.decode("utf-8", "ignore")
 
 
 def _eshik_domofon(k, raqam):
@@ -383,7 +467,11 @@ def eshik_och(k):
             if ESHIK_USULLARI[usul](k, raqam):
                 return True, "Eshik ochildi", usul
         except urllib.error.HTTPError as xato:
-            oxirgi = "Login yoki parol noto'g'ri" if xato.code == 401 else f"Qurilma rad etdi (HTTP {xato.code})"
+            daqiqa = _bloklanganmi(str(xato.msg or "")) if xato.code in (401, 403) else None
+            oxirgi = (f"Qurilma login'ni ~{daqiqa} daqiqaga bloklagan (ko'p marta noto'g'ri parol)" if daqiqa
+                      else "Login yoki parol noto'g'ri" if xato.code == 401 else f"Qurilma rad etdi (HTTP {xato.code})")
+            if xato.code == 401:
+                break                                    # parol xato — ikkinchi usul ham bloklatmasin
         except OSError as xato:
             oxirgi = f"Qurilmaga ulanib bo'lmadi ({xato})"
     return False, oxirgi, None
@@ -419,10 +507,13 @@ def veb_kamera_kadrlari(soni=12, oraliq=0.4):
 def rasm_baytlari(k, eni=960):
     """Telefon uchun kichraytirilgan JPG baytlari — faylga SAQLAMAYDI (jonli ko'rishda
     har soniyada rasm so'raladi, Rasmlar papkasi to'lib ketmasin). (baytlar, None) yoki (None, xato)."""
+    kirish_xato = None
     try:
         jpg = _isapi_rasm(k)
-    except PermissionError as xato:
+    except BloklanganXato as xato:
         return None, str(xato)
+    except PermissionError as xato:
+        jpg, kirish_xato = None, str(xato)
     try:
         import cv2
         import numpy as np
@@ -430,7 +521,7 @@ def rasm_baytlari(k, eni=960):
         return (jpg, None) if jpg else (None, "Kameraga ulanib bo'lmadi")
     rasm = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR) if jpg else _rtsp_kadr(k, yengil=True)
     if rasm is None:
-        return None, "Kameraga ulanib bo'lmadi"
+        return None, kirish_xato or "Kameraga ulanib bo'lmadi"
     if rasm.shape[1] > eni:
         rasm = cv2.resize(rasm, (eni, int(rasm.shape[0] * eni / rasm.shape[1])), interpolation=cv2.INTER_AREA)
     ok, kod = cv2.imencode(".jpg", rasm, [cv2.IMWRITE_JPEG_QUALITY, 72])

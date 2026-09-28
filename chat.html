@@ -433,12 +433,17 @@ function kameraBolimi(ich, K){
     const tq=e('div','qator');
     const jon=matnli('button','tugma','📺 Jonli'); jon.onclick=()=>jonliKorsat(k.nom);
     const sin=matnli('button','tugma ikkinchi','Sinash');
+    const tah=matnli('button','tugma ikkinchi','✏️'); tah.title="Parol / login'ni o'zgartirish";
+    tah.onclick=()=>{ m.nom.value=k.nom; m.ip.value=k.ip; m.login.value=k.login||'admin'; m.parol.value='';
+      m.kanal.value=k.kanal||'1'; m.http_port.value=k.http_port||80; ab.textContent='💾 Saqlash';
+      f.scrollIntoView({behavior:'smooth',block:'center'}); m.parol.focus();
+      xabarcha(k.nom+": yangi parolni kiriting va \"Saqlash\"ni bosing"); };
 
     const och=matnli('button','tugma ikkinchi',"✕");
     const natija=e('div'); natija.style.width='100%';
     sin.onclick=()=>kameraSina(k.nom, natija);
     och.title="O'chirish"; och.onclick=()=>{ if(confirm(k.nom+" kamerasini o'chiraymi?")) sozYoz('kamera_ochir',k.nom); };
-    tq.appendChild(jon); tq.appendChild(sin);
+    tq.appendChild(jon); tq.appendChild(sin); tq.appendChild(tah);
     tq.appendChild(och); r.appendChild(t); r.appendChild(tq); b.appendChild(r); b.appendChild(natija);
   }
   // --- yangi kamera qo'shish ---
