@@ -36,6 +36,7 @@ STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
             "groq_kalit": "", "mikrofon": "", "sezgirlik": 3,
             "claude_kalit": "", "claude_model": "claude-sonnet-5",
             "tga_api_id": "", "tga_api_hash": "", "tga_dostlar": [], "tga_hammasi": False,
+            "ig_token": "", "ig_id": "", "ig_username": "", "ig_rejalar": [], "ig_korilgan": [],
             "kameralar": [], "kamera_kuzatuv": False, "kamera_ovoz": False,
             "yuz_eshik": None, "yuz_eshik_och": True}      # None — hali tanlanmagan (o'zi yoqiladi)
 

@@ -174,6 +174,29 @@ def tahrir(matn, til="uz"):
     return None
 
 
+# ---------- Instagram post tavsifi ----------
+INSTA_TIZIM = (
+    "Sen Instagram uchun post tavsifi yozadigan muharrirsan. Foydalanuvchi videosi nima haqida ekanini "
+    "aytadi. {til_nomi} tilida (o'zbekcha bo'lsa — lotin yozuvida) jonli, qisqa (1-3 gap) tavsif yoz, "
+    "mos 2-4 ta emoji va oxirida 5-8 ta mavzuga mos heshteg qo'sh. Yolg'on ma'lumot qo'shma. "
+    "Faqat tayyor tavsifning o'zini qaytar: izohsiz, qo'shtirnoqsiz.")
+
+
+def instagram_tavsif(mavzu, til="uz"):
+    """Video haqida aytilgan gapdan Instagram tavsifi (emoji + heshteglar). AI yo'q/xato — None."""
+    tizim = INSTA_TIZIM.format(til_nomi=TIL_NOMLARI.get(til, "o'zbek"))
+    for kalit, ishlovchi in AI_TARTIBI:
+        if not os.environ.get(kalit):
+            continue
+        try:
+            j = (ishlovchi(mavzu, tizim, [], harorat=0.8) or "").strip().strip('"“”«»').strip()
+            if j and len(j) < 2200:                   # Instagram chegarasi — 2200 belgi
+                return j
+        except Exception as xato:
+            print(f"(Tavsif xatosi [{kalit}]: {xato})")
+    return None
+
+
 # ---------- Rasmni ko'rib tushuntirish (kamera uchun) ----------
 KORISH_MODELI = "meta-llama/llama-4-scout-17b-16e-instruct"     # Groq — rasm ko'ra oladi, bepul
 

@@ -1216,6 +1216,165 @@ def tg_oqilmaganlarni_oqi():
         tg_xabarni_ol(tg_oqilmagan.pop(0), soradi=True)
 
 
+# ---------- INSTAGRAM (rasmiy API): Reels joylash, izohlar, statistika ----------
+_ig = None
+
+
+def ig_ol():
+    """Ulangan Instagram (yoki None). Birinchi chaqiruvda akkaunt id'si topiladi."""
+    global _ig
+    if not SOZ.get("ig_token"):
+        return None
+    if _ig is None or _ig.token != SOZ["ig_token"]:
+        import instagram
+        _ig = instagram.Instagram(SOZ["ig_token"])
+        _ig.id, _ig.username = SOZ.get("ig_id"), SOZ.get("ig_username")
+        if not _ig.id:
+            _ig.ulan()
+    return _ig
+
+
+def _ig_vaqt(b):
+    """'ertaga soat 19 da' / 'soat 20:30 da' -> unix vaqt yoki None."""
+    m = re.search(r"soat (\d{1,2})(?:[:.](\d{2}))?", b)
+    if not m:
+        return None
+    hozir = datetime.datetime.now()
+    vaqt = hozir.replace(hour=int(m.group(1)) % 24, minute=int(m.group(2) or 0), second=0, microsecond=0)
+    if "ertaga" in b or vaqt <= hozir:
+        vaqt += datetime.timedelta(days=1)
+    return vaqt.timestamp()
+
+
+def _ig_joyla_fonda(fayl, tavsif, rejadan=False):
+    try:
+        ig = ig_ol()
+        media_id = ig.joyla(fayl, tavsif, holat=lambda m: ui_navbat.put(("jarvis", "📸 " + m)))
+        havola = next((p.get("permalink") for p in ig.postlar(3) if p.get("id") == media_id), "")
+        gapir("✅ Instagramga joylandi!" + (f" {havola}" if havola else ""), tarjima_qil=False)
+    except Exception as xato:
+        gapir(f"Instagramga joylab bo'lmadi: {xato}")
+    if rejadan:
+        sozlama_ozgartir("ig_rejalar", [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl], ayt=False)
+
+
+def ig_rejalarni_tikla():
+    """Kompyuter qayta yonganda rejalashtirilgan postlar davom etadi (kechikkanlari darhol joylanadi)."""
+    for r in list(SOZ.get("ig_rejalar", [])):
+        qoldi = r["vaqt"] - time.time()
+        if not os.path.exists(r["fayl"]):
+            continue
+        if qoldi <= 0:
+            print(f"(Instagram: rejadagi post kechikdi — hozir joylayman: {os.path.basename(r['fayl'])})")
+        threading.Timer(max(qoldi, 5), _ig_joyla_fonda, args=(r["fayl"], r["tavsif"], True)).start()
+
+
+def ig_joylash(b):
+    try:
+        ig = ig_ol()
+    except Exception as xato:
+        gapir(f"Instagramga ulanib bo'lmadi: {xato}")
+        return
+    if not ig:
+        gapir("Instagram ulanmagan. Chat sozlamalarida Instagram bo'limiga kalitni qo'ying.")
+        return
+    import instagram
+    ortiqcha = {"instagram", "instagramga", "insta", "instaga", "videoni", "video", "reels", "joyla", "yukla",
+                "qo'y", "post", "qil", "ertaga", "soat", "da", "ga", "ni", "mening", "shu", "oxirgi"}
+    sozlar = [s for s in re.findall(r"[\w']+", b) if s not in ortiqcha and not s.isdigit()]
+    papkalar = [kompyuter.desktop_yoli(), os.path.expanduser(r"~\Videos"), os.path.expanduser(r"~\Downloads"),
+                os.path.expanduser("~/Videos"), os.path.expanduser("~/Downloads")]
+    fayl = instagram.video_top(sozlar, papkalar)
+    if not fayl:
+        gapir("Video topmadim. Videoni Ish stoliga, Videos yoki Downloads papkasiga qo'yib, qayta ayting.")
+        return
+    if not tasdiqla(f"{os.path.basename(fayl)} videosini Instagramga joylaymi?"):
+        gapir("Mayli. Kerakli videoni Ish stoliga qo'yib, nomini aytsangiz, o'shani joylayman.")
+        return
+    gapir("Video nima haqida? Qisqacha ayting — tavsif va heshteglarni o'zim yozaman. Tavsifsiz desangiz, bo'sh qoladi.")
+    aytgan = eshit(25)
+    if bor(aytgan, "tavsifsiz", "kerak emas", "bo'sh"):
+        tavsif = ""
+    elif not aytgan:
+        gapir("Eshitmadim. Bekor qildim.")
+        return
+    else:
+        asl = (asl_matn or aytgan).strip()
+        tavsif = asl[1:].strip() if asl.startswith("/") else (sun_iy.instagram_tavsif(asl, til()) or asl)
+    if tavsif and not tasdiqla(f"Tavsif shunday bo'ladi: {tavsif}. Shu bilan joylaymi?"):
+        gapir("Bekor qildim. Qaytadan urinib ko'ring.")
+        return
+    vaqt = _ig_vaqt(b)
+    if vaqt:
+        rejalar = [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl]
+        sozlama_ozgartir("ig_rejalar", rejalar + [{"vaqt": vaqt, "fayl": fayl, "tavsif": tavsif}], ayt=False)
+        threading.Timer(vaqt - time.time(), _ig_joyla_fonda, args=(fayl, tavsif, True)).start()
+        gapir(f"Rejalashtirildi: {datetime.datetime.fromtimestamp(vaqt):%d-%m soat %H:%M} da joylayman. "
+              "Shu vaqtda kompyuter yoqiq bo'lsin.")
+        return
+    gapir("Joylayapman. Bu bir necha daqiqa olishi mumkin — tayyor bo'lsa aytaman.")
+    fonda(_ig_joyla_fonda, fayl, tavsif)
+
+
+def ig_izohlar():
+    try:
+        ig = ig_ol()
+        if not ig:
+            gapir("Instagram ulanmagan. Chat sozlamalarida Instagram bo'limiga kalitni qo'ying.")
+            return
+        korilgan = set(SOZ.get("ig_korilgan", []))
+        yangi = []
+        for p in ig.postlar(3):
+            for iz in ig.izohlar(p["id"]):
+                if iz["id"] not in korilgan and iz.get("username") != ig.username:
+                    yangi.append(iz)
+    except Exception as xato:
+        gapir(f"Izohlarni ololmadim: {xato}")
+        return
+    if not yangi:
+        gapir("Yangi izoh yo'q.")
+        return
+    gapir(f"{len(yangi)} ta yangi izoh bor.")
+    for iz in yangi[:5]:
+        korilgan.add(iz["id"])
+        gapir(f"{iz.get('username', 'Kimdir')} yozibdi: {iz.get('text', '')}")
+        if not tasdiqla("Javob yozaymi?"):
+            continue
+        gapir("Nima deb yozay?")
+        aytgan = eshit(20)
+        if not aytgan:
+            gapir("Eshitmadim, keyingisiga o'taman.")
+            continue
+        tayyor = xabarni_tayyorla(asl_matn or aytgan)
+        if tasdiqla(f"Shunday yozaman: {tayyor}. To'g'rimi?"):
+            try:
+                ig.javob_yoz(iz["id"], tayyor)
+                gapir("Javob yozildi.")
+            except Exception as xato:
+                gapir(f"Yozib bo'lmadi: {xato}")
+    sozlama_ozgartir("ig_korilgan", list(korilgan)[-500:], ayt=False)
+
+
+def ig_statistika():
+    try:
+        ig = ig_ol()
+        if not ig:
+            gapir("Instagram ulanmagan. Chat sozlamalarida Instagram bo'limiga kalitni qo'ying.")
+            return
+        a = ig.akkaunt()
+        gap = f"Instagram @{a.get('username')}: {a.get('followers_count', 0)} ta obunachi, {a.get('media_count', 0)} ta post."
+        postlar = ig.postlar(1)
+        if postlar:
+            p = postlar[0]
+            s = ig.statistika(p["id"])
+            qismlar = [f"{s['views']} ta ko'rish" if s.get("views") is not None else "",
+                       f"{p.get('like_count', s.get('likes', 0))} ta layk", f"{p.get('comments_count', 0)} ta izoh"]
+            gap += " Oxirgi post: " + ", ".join(q for q in qismlar if q) + "."
+        gapir(gap)
+    except Exception as xato:
+        gapir(f"Statistikani ololmadim: {xato}")
+
+
 def eslatma_vaqti(ish, kechikdi=False):
     """Eslatma vaqti keldi: ovoz chiqarib aytadi, Telegram'ga yuboradi, chatda ko'rinadi."""
     matn = f"⏰ {ISM}, eslatma: {ish}!"
@@ -1694,6 +1853,8 @@ def chat_sozlamalari():
         "ai": {"bor": sun_iy.bormi(), "ozimizniki": bool(SOZ.get("groq_kalit")),
                "claude": bool(SOZ.get("claude_kalit")), "claude_model": SOZ.get("claude_model") or "claude-sonnet-5",
                "claude_modellar": sun_iy.CLAUDE_MODELLAR, "claude_xato": sun_iy.claude_xato},
+        "ig": {"bor": bool(SOZ.get("ig_token")), "username": SOZ.get("ig_username") or "",
+               "rejalar": len(SOZ.get("ig_rejalar", []))},
         "tga": {"holat": tga.holat if tga else "ulanmagan", "men": tga.men if tga else None,
                 "api_bor": bool(SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")),
                 "dostlar": SOZ.get("tga_dostlar") or [], "hammasi": bool(SOZ.get("tga_hammasi"))},
@@ -1964,6 +2125,29 @@ def chat_sozlama_yoz(kalit, qiymat):
             return True, "Claude ulandi. Savol va buyruqlar endi Claude'ga boradi, rasmlar — bepul AI'ga." + tekshiruv
         os.environ.pop("ANTHROPIC_API_KEY", None)
         return True, "Claude o'chirildi — endi faqat bepul AI ishlaydi."
+    if kalit == "ig_token":
+        global _ig
+        token = str(qiymat or "").strip()
+        if not token:
+            return False, "Avval kalitni (token) maydonga qo'ying, keyin Ulash'ni bosing."
+        if token == "__ochir__":
+            for k in ("ig_token", "ig_id", "ig_username"):
+                sozlama_ozgartir(k, "", ayt=False)
+            _ig = None
+            return True, "Instagram uzildi."
+        import instagram
+        try:
+            ig = instagram.Instagram(token)
+            ig.ulan()
+            a = ig.akkaunt()
+        except Exception as xato:
+            return False, f"Ulanmadi: {xato}"
+        sozlama_ozgartir("ig_token", token, ayt=False)
+        sozlama_ozgartir("ig_id", ig.id, ayt=False)
+        sozlama_ozgartir("ig_username", ig.username, ayt=False)
+        _ig = None
+        return True, (f"✅ Instagram ulandi: @{ig.username} ({a.get('followers_count', 0)} obunachi). "
+                      "Endi: 'Jarvis, instagramga videoni joyla' deng.")
     if kalit == "claude_model" and qiymat in sun_iy.CLAUDE_MODELLAR:
         sozlama_ozgartir("claude_model", qiymat, ayt=False)
         os.environ["JARVIS_CLAUDE_MODEL"] = qiymat
@@ -2890,6 +3074,31 @@ YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga y
 
 
 # ---------- 6. BUYRUQLAR (faqat ruxsat berilganlar) ----------
+SAVOL_SOZLAR = ("qaysi", "nima uchun", "nimaga", "nega ", "qanday qilib", "tushuntir", "haqida", "kim edi",
+                "kim bo'lgan", "qachon", "farqi", "maslahat", "rejalashtir", "qanaqa", "nechanchi", "ma'nosi",
+                "sababi", "nima degani", "что такое", "почему", "why ", "what is", "how to")
+# Bular bo'lsa — bu buyruq (bajariladi), savol emas
+BUYRUQ_FELLAR = {"och", "ochib", "ochgin", "yoz", "yozib", "yubor", "yuborib", "qo'y", "qo'yib", "o'chir",
+                 "ko'chir", "top", "topib", "eslat", "ko'rsat", "bos", "yop", "saqla", "o'rnat", "yangila",
+                 "joyla", "yukla", "o'qi", "o'qib"}
+# Jarvis'ning o'zi aniq javob beradigan mavzular (AI bilmaydi: ob-havo, kurs, kamera...)
+LOKAL_MAVZU = ("ob-havo", "ob havo", "havo ", "harorat", "gradus", "kurs", "dollar", "valyuta", "eslatma",
+               "soat nech", "vaqt nech", "sana", "kamera", "eshik", "telefon", "xabar", "fayl", "papka", "musiqa",
+               "qo'shiq", "youtube", "telegram", "instagram", "ovoz", "batareya", "internet", "disk", "xotira",
+               "kompyuter", "noutbuk", "yuz")
+
+
+def aniq_savolmi(b):
+    """'O'zbekistonning eng qadimiy shahri qaysi' -> True; 'ertaga ob-havo qanday' -> False (mahalliy)."""
+    s = f" {b.lower()} "
+    sozlar = [w.strip(".,!?") for w in s.split()]
+    if len(sozlar) < 4 or not ("?" in s or any(q in s for q in SAVOL_SOZLAR)):
+        return False
+    if any(w in BUYRUQ_FELLAR for w in sozlar) or any(m in s for m in LOKAL_MAVZU):
+        return False
+    return True
+
+
 def bajar(b):
     """False qaytarsa, dastur to'xtaydi."""
     global xom_rejim
@@ -2901,6 +3110,23 @@ def bajar(b):
     if "xayr" in sozlar and len(sozlar) <= 3:
         gapir(f"Xayr, {ISM}!")
         return False
+
+    # Aniq savol ("... qaysi?", "nima uchun ...", "... haqida gapir") — AI'ga. Aks holda savol
+    # ichidagi tasodifiy so'z ("shahri", "kamera") mahalliy buyruq bo'lib qolishi mumkin edi.
+    elif sun_iy.bormi() and aniq_savolmi(b):
+        javob_ber(b)
+
+    # ----- Instagram (rasmiy API): joylash, izohlar, statistika -----
+    elif bor(b, "instagram", "инстаграм", "insta") and re.search(r"\b(joyla|yukla|reels|post qil|videoni)", b) \
+            and not re.search(r"\b\w+(ga|ka|qa) .+ deb yoz", b):
+        ig_joylash(b)
+
+    elif bor(b, "instagram", "инстаграм", "insta") and bor(b, "izoh", "komment", "коммент"):
+        ig_izohlar()
+
+    elif bor(b, "instagram", "инстаграм", "insta") and bor(b, "statistika", "ko'rildi", "ko'rish", "layk",
+                                                            "obunachi", "podpischik", "подписчик"):
+        ig_statistika()
 
     # Telefon buyruqlari eng birinchi tekshiriladi ("ko'chir"da "o'chir" bor kabi
     # chalkashliklar bo'lmasligi uchun)
@@ -2980,7 +3206,8 @@ def bajar(b):
         uy_kamera_rasmi(b)
 
     # ----- kundalik qulayliklar -----
-    elif bor(b, "shahrim", "men yashaydigan shahar") and qulayliklar.shahar_top(b, "")[0]:
+    elif re.search(r"\b(mening shahrim|shahrim|men yashaydigan shahar)\b", b) and "?" not in b \
+            and any(s in b for s in qulayliklar.SHAHARLAR):
         shahar, nomi = qulayliklar.shahar_top(b, "")
         sozlama_ozgartir("shahar", next(k for k, v in qulayliklar.SHAHARLAR.items() if v[1] == nomi),
                          ayt=False)
@@ -3291,6 +3518,7 @@ def miya():
     if SOZ.get("kamera_kuzatuv") and kameralar():
         print(f"📹 Kamera kuzatuvi davom etyapti: {kuzatuvni_yoq(True)} ta kamera")
     fonda(tga_ishga_tushir)                         # do'stlardan kelgan Telegram xabarlari
+    ig_rejalarni_tikla()                            # rejalashtirilgan Instagram postlari
     pin = str(SOZ.get("telefon_pin") or "0000")
     himoya.ogohlantir = lambda matn: bot.yoz(matn) if bot and bot.egasi else None
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
@@ -3403,7 +3631,7 @@ if __name__ == "__main__":
         import pyaudio                   # noqa: F401  — mikrofon
         flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
         for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio", "webview", "clr",
-                          "anthropic", "telethon", "telegram_akkaunt", "qrcode", "cryptography"):
+                          "anthropic", "telethon", "telegram_akkaunt", "qrcode", "cryptography", "instagram"):
             try:
                 __import__(ixtiyoriy)
                 print(f"  + {ixtiyoriy}")
