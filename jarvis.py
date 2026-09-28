@@ -1153,6 +1153,65 @@ def tga_ishga_tushir():
         return None
 
 
+# ---------- 2-TELEGRAM AKKAUNT (kompaniya, masalan Gatework): mijozlarga Claude avtomatik javob beradi ----------
+tgb = None                        # telegram_akkaunt.Akkaunt (2-akkaunt)
+tgb_javobchi = None               # telegram_javobchi.Javobchi
+_tgb_sayt = {"vaqt": 0, "matn": ""}
+
+
+def _tgb_log(matn):
+    print(matn)
+    arxiv.yoz("jarvis", matn, "telegram")
+
+
+def tgb_malumot():
+    """Kompaniya haqida: siz yozgan matn + saytdan olingan ma'lumot (12 soatda bir yangilanadi)."""
+    qismlar = []
+    if SOZ.get("tgb_malumot"):
+        qismlar.append(SOZ["tgb_malumot"])
+    manzil = sayt.manzil_top(SOZ.get("tgb_sayt") or "")
+    if manzil:
+        if time.time() - _tgb_sayt["vaqt"] > 12 * 3600:
+            try:
+                _tgb_sayt["matn"] = sayt.oqi(manzil, chegara=5000)
+            except Exception as xato:
+                print(f"(Kompaniya saytini o'qib bo'lmadi: {xato})")
+            _tgb_sayt["vaqt"] = time.time()
+        if _tgb_sayt["matn"]:
+            qismlar.append("Kompaniya sayti (" + manzil + "):\n" + _tgb_sayt["matn"])
+    return "\n\n".join(qismlar)
+
+
+def _tgb_ai(suhbat, malumot):
+    kompaniya = sayt.manzil_top(SOZ.get("tgb_sayt") or "") or (tgb.men if tgb else "") or "kompaniya"
+    return sun_iy.biznes_javob(suhbat, malumot, kompaniya.split("//", 1)[-1].rstrip("/"))
+
+
+def tgb_ishga_tushir():
+    global tgb, tgb_javobchi
+    if not (SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")):
+        return None
+    try:
+        import telegram_akkaunt
+        import telegram_javobchi
+    except ImportError:
+        print("(Telegram akkaunt uchun: pip install telethon)")
+        return None
+    if tgb is None:
+        tgb = telegram_akkaunt.Akkaunt(lambda x: tgb_javobchi and tgb_javobchi.keldi(x), _tgb_log,
+                                       sessiya=telegram_akkaunt.SESSIYA_BIZNES, nom="2-Telegram akkaunt")
+        tgb.hammasi, tgb.rasm_yukla = True, False
+        tgb_javobchi = telegram_javobchi.Javobchi(tgb, _tgb_ai, tgb_malumot, _tgb_log)
+    tgb_javobchi.yoniq = bool(SOZ.get("tgb_yoniq"))
+    try:
+        return tgb.ishga_tushir(SOZ["tga_api_id"], SOZ["tga_api_hash"])
+    except Exception as xato:
+        tgb.holat = "xato"
+        tgb.oxirgi_xato = telegram_akkaunt.xato_matni(xato)
+        print(f"(2-Telegram akkauntga ulanib bo'lmadi: {type(xato).__name__}: {xato})")
+        return None
+
+
 def _tg_xabar_matni(x):
     if x["tur"] == "matn":
         return f"{x['kim']} yozibdi: {x['matn']}"
@@ -1501,6 +1560,39 @@ def ig_izohlar():
             except Exception as xato:
                 gapir(f"Yozib bo'lmadi: {xato}")
     sozlama_ozgartir("ig_korilgan", list(korilgan)[-500:], ayt=False)
+
+
+def ig_holati():
+    """'Instagramni tekshir, faolmi' — Jarvis'dagi Instagram ulanishini haqiqatan tekshiradi."""
+    qismlar = []
+    if SOZ.get("ig_token"):
+        try:
+            a = ig_ol().akkaunt()
+            qismlar.append(f"Instagram rasmiy kalit bilan ulangan va ishlayapti: @{a.get('username')}, "
+                           f"{a.get('followers_count', 0)} ta obunachi, {a.get('media_count', 0)} ta post")
+        except Exception as xato:
+            qismlar.append(f"Instagram kaliti bor, lekin ishlamayapti: {xato}. Kalit muddati o'tgan bo'lishi mumkin — "
+                           "sozlamalarda yangisini qo'ying")
+    if ig_fon_bormi():
+        qismlar.append("orqa fon rejimi ham tayyor (Instagram'ga kirilgan)")
+    elif SOZ.get("ig_brauzer_kirgan"):
+        qismlar.append("orqa fon rejimi uchun kutubxona yetishmayapti")
+    if not qismlar:
+        gapir("Instagram hali ulanmagan. Sozlamalarda Instagram bo'limiga Meta kalitini (IGAA bilan boshlanadi) qo'ying.")
+        return
+    rejalar = len(SOZ.get("ig_rejalar", []))
+    gapir(". ".join(qismlar) + (f". Vaqtga qo'yilgan postlar: {rejalar} ta." if rejalar else "."))
+
+
+def jarvis_holati():
+    """Claude'ga: Jarvis'da hozir nimalar ulangan (savolga to'g'ri javob berishi uchun)."""
+    ig = ("ulangan (@" + (SOZ.get("ig_username") or "?") + ")") if SOZ.get("ig_token") else \
+        ("orqa fon rejimida kirilgan" if SOZ.get("ig_brauzer_kirgan") else "ulanmagan")
+    return (f"Instagram: {ig}. Telegram shaxsiy akkaunt: {tga.holat if tga else 'ulanmagan'}. "
+            f"Kompaniya Telegram akkaunti (avto-javob): {tgb.holat if tgb else 'ulanmagan'}"
+            f"{', avto-javob yoniq' if SOZ.get('tgb_yoniq') else ''}. Kameralar: {len(kameralar())} ta. "
+            "Jarvis buyruqlari: 'instagramni tekshir', 'instagramga videoni joyla', 'instagram statistikasi', "
+            "'<sayt> saytini baholab ber', 'kelgan xabarlarni o'qi'.")
 
 
 def ig_statistika():
@@ -2008,6 +2100,10 @@ def chat_sozlamalari():
         "tga": {"holat": tga.holat if tga else "ulanmagan", "men": tga.men if tga else None,
                 "api_bor": bool(SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")),
                 "dostlar": SOZ.get("tga_dostlar") or [], "hammasi": bool(SOZ.get("tga_hammasi"))},
+        "tgb": {"holat": tgb.holat if tgb else "ulanmagan", "men": tgb.men if tgb else None,
+                "api_bor": bool(SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")),
+                "yoniq": bool(SOZ.get("tgb_yoniq")), "malumot": SOZ.get("tgb_malumot") or "",
+                "sayt": SOZ.get("tgb_sayt") or "", "javoblar": tgb_javobchi.javoblar_soni if tgb_javobchi else 0},
         "telegram": {"token": ("•••• " + token[-4:]) if token else "", "egasi": bool(SOZ.get("telegram_egasi")),
                      "ishlayapti": bool(bot)},
         "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
@@ -2334,84 +2430,9 @@ def chat_sozlama_yoz(kalit, qiymat):
         sozlama_ozgartir("claude_model", qiymat, ayt=False)
         os.environ["JARVIS_CLAUDE_MODEL"] = qiymat
         return True, f"Model: {sun_iy.CLAUDE_MODELLAR[qiymat]}."
-    if kalit == "tga_kod" and isinstance(qiymat, dict):          # 1-qadam: api_id, api_hash, telefon
-        api_id = str(qiymat.get("api_id") or "").strip()
-        api_hash = str(qiymat.get("api_hash") or "").strip()
-        telefon = str(qiymat.get("telefon") or "").strip()
-        if not api_id.isdigit() or len(api_hash) < 20:
-            return False, "api_id (raqam) va api_hash ni my.telegram.org dan to'g'ri ko'chiring."
-        if not re.fullmatch(r"\+?\d{9,15}", telefon.replace(" ", "")):
-            return False, "Telefon raqamini to'liq yozing, masalan: +998901234567"
-        sozlama_ozgartir("tga_api_id", api_id, ayt=False)
-        sozlama_ozgartir("tga_api_hash", api_hash, ayt=False)
-        import telegram_akkaunt
-        try:
-            if tga_ishga_tushir() == "ulangan":
-                return True, f"Akkaunt allaqachon ulangan: {tga.men}"
-            if not tga or not tga.mijoz:
-                return False, "Telegram'ga ulanib bo'lmadi: " + (getattr(tga, "oxirgi_xato", "") or
-                                                                 "internetni tekshiring (jarvis.log da batafsil)")
-            qayerga = tga.kod_yubor(telefon)
-        except Exception as xato:
-            print(f"(Telegram kod xatosi: {type(xato).__name__}: {xato})")
-            return False, "Kod yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
-        print(f"(Telegram kodi yuborildi: {qayerga})")
-        return True, f"Kod yuborildi — {qayerga}. Kodni pastga yozing."
-    if kalit == "tga_qr" and isinstance(qiymat, dict):          # QR bilan kirish — kod kerak emas
-        api_id = str(qiymat.get("api_id") or SOZ.get("tga_api_id") or "").strip()
-        api_hash = str(qiymat.get("api_hash") or SOZ.get("tga_api_hash") or "").strip()
-        if not api_id.isdigit() or len(api_hash) < 20:
-            return False, "Avval api_id va api_hash ni yozing (my.telegram.org dan)."
-        sozlama_ozgartir("tga_api_id", api_id, ayt=False)
-        sozlama_ozgartir("tga_api_hash", api_hash, ayt=False)
-        holat_ = tga_ishga_tushir()
-        if holat_ == "ulangan":
-            return True, f"Akkaunt allaqachon ulangan: {tga.men}"
-        if not tga or not tga.mijoz:
-            return False, "Telegram'ga ulanib bo'lmadi: " + (getattr(tga, "oxirgi_xato", "") or "internetni tekshiring")
-        tga.qr_boshla()
-        return True, "QR kod tayyorlanyapti..."
-    if kalit == "tga_qr_holat":                                  # chat oynasi har 2 soniyada so'raydi
-        if not tga:
-            return False, "Boshlanmagan."
-        qosh = {"holat": tga.holat, "men": tga.men}
-        if tga.qr_url:
-            try:
-                import base64
-                import io
-                import qrcode
-                rasm = qrcode.make(tga.qr_url, box_size=8, border=2)
-                bufer = io.BytesIO()
-                rasm.save(bufer, format="PNG")
-                qosh["qr"] = "data:image/png;base64," + base64.b64encode(bufer.getvalue()).decode()
-            except Exception as xato:
-                qosh["url"] = tga.qr_url                          # qrcode yo'q — chat o'zi chizadi
-                print(f"(QR rasm xatosi: {xato})")
-        xabar = {"ulangan": f"✅ Ulandi: {tga.men}", "parol_kerak": "Ikki bosqichli parolingizni kiriting va 'Kirish'ni bosing",
-                 "qr_kutilmoqda": "Telefonda skanerlang"}.get(tga.holat, tga.qr_xato or "Kutilmoqda...")
-        return tga.holat != "ulanmagan" or not tga.qr_xato, xabar, qosh
-    if kalit == "tga_qayta":                                     # kod kelmadi — SMS orqali
-        import telegram_akkaunt
-        if not tga or not tga.kod_hash:
-            return False, "Avval 'Kod yuborish'ni bosing."
-        try:
-            qayerga = tga.qayta_yubor()
-        except Exception as xato:
-            print(f"(Telegram qayta kod xatosi: {type(xato).__name__}: {xato})")
-            return False, "Qayta yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
-        return True, f"Kod qayta yuborildi — {qayerga}."
-    if kalit == "tga_kirish" and isinstance(qiymat, dict):       # 2-qadam: kod (va 2 bosqichli parol)
-        if not tga:
-            return False, "Avval kod so'rang."
-        try:
-            natija = tga.kirish(str(qiymat.get("kod") or ""), str(qiymat.get("parol") or ""))
-        except Exception as xato:
-            import telegram_akkaunt
-            print(f"(Telegram kirish xatosi: {type(xato).__name__}: {xato})")
-            return False, "Kirib bo'lmadi: " + telegram_akkaunt.xato_matni(xato)
-        if natija == "parol_kerak":
-            return False, "Akkauntingizda ikki bosqichli parol bor — uni ham kiriting."
-        return True, f"✅ Ulandi: {tga.men}. Endi kuzatiladigan do'stlarni yozing."
+    m = re.fullmatch(r"(tga|tgb)_(kod|qr|qr_holat|qayta|kirish)", kalit)
+    if m:
+        return tg_kirish_sozlama(m.group(1), m.group(2), qiymat)
     if kalit == "tga_dostlar":
         dostlar = [d.strip() for d in re.split(r"[,\n;]", str(qiymat or "")) if d.strip()][:30]
         sozlama_ozgartir("tga_dostlar", dostlar, ayt=False)
@@ -2431,6 +2452,117 @@ def chat_sozlama_yoz(kalit, qiymat):
             except Exception:
                 pass
         return True, "Telegram akkaunt uzildi, kirish kaliti o'chirildi."
+    if kalit == "tgb_yoniq":
+        if qiymat and not sun_iy.bormi():
+            return False, "Avval Claude (yoki bepul AI) kalitini ulang."
+        if qiymat and tga and tgb and tga.men and tga.men == tgb.men:
+            return False, ("Bu sizning shaxsiy akkauntingiz — do'stlaringizga ham avtomatik javob ketadi. "
+                           "2-akkauntga kompaniya (Gatework) raqami bilan kiring.")
+        sozlama_ozgartir("tgb_yoniq", bool(qiymat), ayt=False)
+        if tgb_javobchi:
+            tgb_javobchi.yoniq = bool(qiymat)
+        return True, ("Avtomatik javob yoqildi: kim yozsa, Claude javob beradi. Siz o'zingiz chatga yozsangiz — "
+                      "Jarvis 30 daqiqa o'sha chatga aralashmaydi." if qiymat else "Avtomatik javob o'chirildi.")
+    if kalit in ("tgb_malumot", "tgb_sayt"):
+        sozlama_ozgartir(kalit, str(qiymat or "").strip()[:6000], ayt=False)
+        _tgb_sayt["vaqt"] = 0                                    # sayt qayta o'qilsin
+        return True, "Saqlandi — Claude javob berishda shu ma'lumotga tayanadi."
+    if kalit == "tgb_chiqish":
+        if tgb:
+            try:
+                tgb.chiqish()
+            except Exception:
+                pass
+        sozlama_ozgartir("tgb_yoniq", False, ayt=False)
+        if tgb_javobchi:
+            tgb_javobchi.yoniq = False
+        return True, "2-Telegram akkaunt uzildi, kirish kaliti o'chirildi."
+    return False, "Noma'lum sozlama."
+
+
+def tg_kirish_sozlama(p, amal, qiymat):
+    """Ikkala Telegram akkaunt uchun kirish (p: 'tga' — shaxsiy, 'tgb' — kompaniya)."""
+    ishga = tga_ishga_tushir if p == "tga" else tgb_ishga_tushir
+    A = (lambda: tga) if p == "tga" else (lambda: tgb)
+    keyin = " Endi kuzatiladigan do'stlarni yozing." if p == "tga" else " Endi avtomatik javobni yoqing."
+    if amal == "kod" and isinstance(qiymat, dict):          # 1-qadam: api_id, api_hash, telefon
+        api_id = str(qiymat.get("api_id") or SOZ.get("tga_api_id") or "").strip()
+        api_hash = str(qiymat.get("api_hash") or SOZ.get("tga_api_hash") or "").strip()
+        telefon = str(qiymat.get("telefon") or "").strip()
+        if not api_id.isdigit() or len(api_hash) < 20:
+            return False, "api_id (raqam) va api_hash ni my.telegram.org dan to'g'ri ko'chiring."
+        if not re.fullmatch(r"\+?\d{9,15}", telefon.replace(" ", "")):
+            return False, "Telefon raqamini to'liq yozing, masalan: +998901234567"
+        sozlama_ozgartir("tga_api_id", api_id, ayt=False)
+        sozlama_ozgartir("tga_api_hash", api_hash, ayt=False)
+        import telegram_akkaunt
+        try:
+            if ishga() == "ulangan":
+                return True, f"Akkaunt allaqachon ulangan: {A().men}"
+            if not A() or not A().mijoz:
+                return False, "Telegram'ga ulanib bo'lmadi: " + (getattr(A(), "oxirgi_xato", "") or
+                                                                 "internetni tekshiring (jarvis.log da batafsil)")
+            qayerga = A().kod_yubor(telefon)
+        except Exception as xato:
+            print(f"(Telegram kod xatosi: {type(xato).__name__}: {xato})")
+            return False, "Kod yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
+        print(f"(Telegram kodi yuborildi: {qayerga})")
+        return True, f"Kod yuborildi — {qayerga}. Kodni pastga yozing."
+    if amal == "qr" and isinstance(qiymat, dict):          # QR bilan kirish — kod kerak emas
+        api_id = str(qiymat.get("api_id") or SOZ.get("tga_api_id") or "").strip()
+        api_hash = str(qiymat.get("api_hash") or SOZ.get("tga_api_hash") or "").strip()
+        if not api_id.isdigit() or len(api_hash) < 20:
+            return False, "Avval api_id va api_hash ni yozing (my.telegram.org dan)."
+        sozlama_ozgartir("tga_api_id", api_id, ayt=False)
+        sozlama_ozgartir("tga_api_hash", api_hash, ayt=False)
+        holat_ = ishga()
+        if holat_ == "ulangan":
+            return True, f"Akkaunt allaqachon ulangan: {A().men}"
+        if not A() or not A().mijoz:
+            return False, "Telegram'ga ulanib bo'lmadi: " + (getattr(A(), "oxirgi_xato", "") or "internetni tekshiring")
+        A().qr_boshla()
+        return True, "QR kod tayyorlanyapti..."
+    if amal == "qr_holat":                                  # chat oynasi har 2 soniyada so'raydi
+        if not A():
+            return False, "Boshlanmagan."
+        qosh = {"holat": A().holat, "men": A().men}
+        if A().qr_url:
+            try:
+                import base64
+                import io
+                import qrcode
+                rasm = qrcode.make(A().qr_url, box_size=8, border=2)
+                bufer = io.BytesIO()
+                rasm.save(bufer, format="PNG")
+                qosh["qr"] = "data:image/png;base64," + base64.b64encode(bufer.getvalue()).decode()
+            except Exception as xato:
+                qosh["url"] = A().qr_url                          # qrcode yo'q — chat o'zi chizadi
+                print(f"(QR rasm xatosi: {xato})")
+        xabar = {"ulangan": f"✅ Ulandi: {A().men}", "parol_kerak": "Ikki bosqichli parolingizni kiriting va 'Kirish'ni bosing",
+                 "qr_kutilmoqda": "Telefonda skanerlang"}.get(A().holat, A().qr_xato or "Kutilmoqda...")
+        return A().holat != "ulanmagan" or not A().qr_xato, xabar, qosh
+    if amal == "qayta":                                     # kod kelmadi — SMS orqali
+        import telegram_akkaunt
+        if not A() or not A().kod_hash:
+            return False, "Avval 'Kod yuborish'ni bosing."
+        try:
+            qayerga = A().qayta_yubor()
+        except Exception as xato:
+            print(f"(Telegram qayta kod xatosi: {type(xato).__name__}: {xato})")
+            return False, "Qayta yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
+        return True, f"Kod qayta yuborildi — {qayerga}."
+    if amal == "kirish" and isinstance(qiymat, dict):       # 2-qadam: kod (va 2 bosqichli parol)
+        if not A():
+            return False, "Avval kod so'rang."
+        try:
+            natija = A().kirish(str(qiymat.get("kod") or ""), str(qiymat.get("parol") or ""))
+        except Exception as xato:
+            import telegram_akkaunt
+            print(f"(Telegram kirish xatosi: {type(xato).__name__}: {xato})")
+            return False, "Kirib bo'lmadi: " + telegram_akkaunt.xato_matni(xato)
+        if natija == "parol_kerak":
+            return False, "Akkauntingizda ikki bosqichli parol bor — uni ham kiriting."
+        return True, f"✅ Ulandi: {A().men}." + keyin
     return False, "Noma'lum sozlama."
 
 
@@ -3224,7 +3356,11 @@ def javob_ber(gap):
     """AI kalit bo'lsa — hamma narsaga AI javob beradi (aqlliroq).
     Kalit bo'lmasa — savolga Vikipediya, oddiy gapga tayyor suhbat."""
     if sun_iy.bormi():                            # bepul/pullik AI ulangan
-        aqlli = sun_iy.javob(gap, ISM, til())
+        try:
+            holat_ = jarvis_holati()
+        except Exception:
+            holat_ = ""
+        aqlli = sun_iy.javob(gap, ISM, til(), holat_)
         if aqlli:
             gapir(aqlli, tarjima_qil=False)      # AI allaqachon kerakli tilda javob berdi
             return
@@ -3312,6 +3448,11 @@ def bajar(b):
     if "xayr" in sozlar and len(sozlar) <= 3:
         gapir(f"Xayr, {ISM}!")
         return False
+
+    # "instagramni tekshir, faolmi" / "instagram ulanganmi" — Jarvis'dagi ulanish holati
+    elif bor(b, "instagram", "инстаграм", "insta") and re.search(
+            r"(tekshir|faolmi|ulanganmi|ulandimi|ishlayaptimi|ishlaydimi|holat|проверь|работает)", b):
+        ig_holati()
 
     # "cuticlehair.co saytiga kirib 1 dan 10 gacha baholab ber" — saytni o'qib, AI'ga tahlil qildiramiz
     elif sayt.tahlilmi(b):
@@ -3724,6 +3865,7 @@ def miya():
     if SOZ.get("kamera_kuzatuv") and kameralar():
         print(f"📹 Kamera kuzatuvi davom etyapti: {kuzatuvni_yoq(True)} ta kamera")
     fonda(tga_ishga_tushir)                         # do'stlardan kelgan Telegram xabarlari
+    fonda(tgb_ishga_tushir)                         # 2-akkaunt (kompaniya) — avtomatik javob
     ig_rejalarni_tikla()                            # rejalashtirilgan Instagram postlari
     pin = str(SOZ.get("telefon_pin") or "0000")
     himoya.ogohlantir = lambda matn: bot.yoz(matn) if bot and bot.egasi else None

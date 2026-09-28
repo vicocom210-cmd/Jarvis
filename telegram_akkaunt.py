@@ -17,6 +17,8 @@ import threading
 import sozlamalar
 
 SESSIYA = os.path.join(sozlamalar.PAPKA, "telegram_akkaunt")
+SESSIYA_BIZNES = os.path.join(sozlamalar.PAPKA, "telegram_biznes")   # 2-akkaunt (masalan, kompaniya)
+TELEGRAM_XIZMAT = 777000                  # Telegram'ning rasmiy chati (kirish kodlari) — hech qachon tegilmaydi
 
 KOD_TURLARI = {
     "SentCodeTypeApp": "boshqa qurilmangizdagi Telegram ilovasiga — \"Telegram\" nomli rasmiy chatni oching (ko'k belgili)",
@@ -64,11 +66,13 @@ def xato_matni(xato):
 
 
 class Akkaunt:
-    def __init__(self, xabar_keldi, holat_xabari=print):
+    def __init__(self, xabar_keldi, holat_xabari=print, sessiya=SESSIYA, nom="Telegram akkaunt"):
+        self.sessiya, self.nom = sessiya, nom
         self.xabar_keldi = xabar_keldi        # (dict) -> None: {kim, matn, tur, chat_id, xabar_id}
         self.holat_xabari = holat_xabari
         self.dostlar = []                     # kuzatiladigan do'stlar: ism, @username yoki raqam
         self.hammasi = False                  # barcha shaxsiy xabarlar
+        self.rasm_yukla = True                # kelgan rasmni yuklab olish (AI ko'rib aytishi uchun)
         self.mijoz = None
         self.loop = None
         self.telefon = ""
@@ -88,7 +92,7 @@ class Akkaunt:
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
 
         async def yarat():                    # mijoz shu loop ichida yaratiladi — o'shanga bog'lanadi
-            m = TelegramClient(SESSIYA, int(api_id), str(api_hash).strip())
+            m = TelegramClient(self.sessiya, int(api_id), str(api_hash).strip())
             await m.connect()
             return m
         self.mijoz = self._bajar(yarat())
@@ -163,7 +167,7 @@ class Akkaunt:
         me = await self.mijoz.get_me()
         self.men = " ".join(x for x in (me.first_name, me.last_name) if x) + (f" (@{me.username})" if me.username else "")
         self.holat = "ulangan"
-        self.holat_xabari(f"✈️ Telegram akkaunt ulandi: {self.men}")
+        self.holat_xabari(f"✈️ {self.nom} ulandi: {self.men}")
 
     def qayta_yubor(self):
         """Kodni boshqa usulda (odatda SMS) qayta yuborish."""
@@ -192,7 +196,7 @@ class Akkaunt:
             self._bajar(self.mijoz.log_out())
         finally:
             self.holat, self.men = "ulanmagan", None
-            for fayl in (SESSIYA + ".session", SESSIYA + ".session-journal"):
+            for fayl in (self.sessiya + ".session", self.sessiya + ".session-journal"):
                 try:
                     os.remove(fayl)
                 except OSError:
@@ -220,6 +224,8 @@ class Akkaunt:
     async def _ishla(self, hodisa):
         if not hodisa.is_private:                 # guruh va kanallar — yo'q
             return
+        if hodisa.chat_id == TELEGRAM_XIZMAT:
+            return
         kim = await hodisa.get_sender()
         if kim is None or getattr(kim, "bot", False) or not self._kuzatiladimi(kim):
             return
@@ -237,14 +243,14 @@ class Akkaunt:
             tur = "fayl"
         ism = " ".join(x for x in (kim.first_name, kim.last_name) if x) or (kim.username or "Noma'lum")
         rasm_yoli = None
-        if tur == "rasm":
+        if tur == "rasm" and self.rasm_yukla:
             try:
                 import tempfile
                 rasm_yoli = await xabar.download_media(file=os.path.join(tempfile.gettempdir(), "jarvis_tg_rasm.jpg"))
             except Exception:
                 rasm_yoli = None
         self.xabar_keldi({"kim": ism, "matn": xabar.message or "", "tur": tur, "chat_id": hodisa.chat_id,
-                          "xabar_id": xabar.id, "rasm": rasm_yoli,
+                          "xabar_id": xabar.id, "rasm": rasm_yoli, "username": getattr(kim, "username", "") or "",
                           "emoji": getattr(getattr(xabar, "sticker", None), "alt", "") if tur == "stiker" else ""})
 
     def oqildi(self, chat_id, xabar_id):
@@ -254,4 +260,17 @@ class Akkaunt:
             pass
 
     def yubor(self, chat_id, matn):
-        self._bajar(self.mijoz.send_message(chat_id, matn), timeout=30)
+        return self._bajar(self.mijoz.send_message(chat_id, matn), timeout=30)
+
+    def oxirgi_xabarlar(self, chat_id, soni=12):
+        """Suhbatning oxirgi xabarlari, eskisidan yangisiga: [(chiquvchimi, matn, vaqt, id), ...]"""
+        xabarlar = self._bajar(self.mijoz.get_messages(chat_id, limit=soni), timeout=30)
+        def matn(x):
+            if x.message:
+                return x.message
+            if x.voice:
+                return "[ovozli xabar yubordi]"
+            if x.photo:
+                return "[rasm yubordi]"
+            return "[fayl/stiker yubordi]" if x.media else ""
+        return [(bool(x.out), matn(x), x.date.timestamp(), x.id) for x in reversed(xabarlar)]

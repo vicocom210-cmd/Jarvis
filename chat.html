@@ -418,9 +418,10 @@ async function sozSorov(kalit, qiymat){
   const r=await fetch('/api/sozlama',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kalit,qiymat})});
   return r.json();
 }
-function telegramAkkauntBolimi(ich, T){
-  if(!T) return;
-  const b=bolim('💬','Telegram xabarlari (akkauntingiz)',"Tanlangan do'stingizdan xabar kelsa, Jarvis: <b>\"...dan xabar keldi, o'qib beraymi?\"</b> → o'qiydi → "+
+function telegramAkkauntBolimi(ich, T, p){
+  if(!T) return; p=p||'tga';
+  const b= p==='tgb' ? bolim('💼',"2-Telegram akkaunt (kompaniya) — avtomatik javob","Masalan, Gatework'ning Telegram'i: kim yozsa, <b>Claude</b> kompaniya ma'lumotiga tayanib o'zi javob beradi. "+
+    "Siz o'zingiz chatga yozsangiz — Jarvis 30 daqiqa o'sha chatga aralashmaydi. Guruh va kanallarga javob yozilmaydi.") : bolim('💬','Telegram xabarlari (akkauntingiz)',"Tanlangan do'stingizdan xabar kelsa, Jarvis: <b>\"...dan xabar keldi, o'qib beraymi?\"</b> → o'qiydi → "+
     "<b>\"javob yozaymi?\"</b> → aytganingizni tuzatib <b>\"to'g'ri yozdimmi?\"</b> deb so'raydi → tasdiqlasangiz yuboradi.");
   const hb = T.holat==='ulangan' ? ['yashil','Ulangan'] : (T.holat==='kod_kutilmoqda'||T.holat==='parol_kerak') ? ['sariq','Kod kutilmoqda'] : ['kulrang','Ulanmagan'];
   b.querySelector('h3').appendChild(matnli('span','holat-belgi '+hb[0], hb[1]));
@@ -433,12 +434,13 @@ function telegramAkkauntBolimi(ich, T){
     const m={}; for(const [k,bel,tur] of [['api_id','api_id (raqam)',''],['api_hash','api_hash','password'],['telefon','Telefon: +998901234567','']]){
       const i=e('input','maydon'); i.placeholder=bel; if(tur) i.type=tur; m[k]=i; f.appendChild(i); }
     if(T.api_bor){ m.api_id.placeholder='api_id saqlangan'; m.api_hash.placeholder='api_hash saqlangan'; }
+    if(p==='tgb') b.appendChild(e('div','izoh',"⚠️ Bu yerda <b>kompaniya raqami</b> bilan kiring (shaxsiy akkauntingiz emas). QR uchun: kompaniya akkaunti ochiq telefonda skanerlang."+(T.api_bor?" api_id va api_hash 1-akkauntdan olinadi — bo'sh qoldiring.":"")));
     b.appendChild(f);
     // --- QR bilan kirish (tavsiya — kod kelishini kutish shart emas) ---
     const qrb=matnli('button','tugma','📷 QR kod bilan kirish (tavsiya)'); qrb.style.marginTop='12px'; qrb.style.marginRight='10px';
     const qrJoy=e('div'); qrJoy.style.marginTop='12px';
     let qrTaymer=null;
-    const qrKuzat=async()=>{ let d; try{ d=await sozSorov('tga_qr_holat',1); }catch(_){ return; }
+    const qrKuzat=async()=>{ let d; try{ d=await sozSorov(p+'_qr_holat',1); }catch(_){ return; }
       if(d.url && !d.qr){ clearInterval(qrTaymer); ayt({ok:false,xabar:"QR rasmini chizib bo'lmadi (qrcode kutubxonasi yo'q) — 'Kod bilan kirish'dan foydalaning"}); return; }
       if(d.qr){ qrJoy.innerHTML='';
         const i=document.createElement('img'); i.src=d.qr;                 // QR faqat shu kompyuterda chiziladi (token tashqariga chiqmaydi)
@@ -449,13 +451,13 @@ function telegramAkkauntBolimi(ich, T){
       else if(d.holat==='parol_kerak'){ clearInterval(qrTaymer); qrJoy.innerHTML=''; ayt({ok:false,xabar:d.xabar}); kq.style.display='grid'; par.focus(); }
       else if(!d.ok){ clearInterval(qrTaymer); qrJoy.innerHTML=''; ayt(d); } };
     qrb.onclick=async()=>{ qrb.disabled=true; nat.textContent='⏳ Telegram\'ga ulanyapman...'; nat.style.color='';
-      const d=await sozSorov('tga_qr',{api_id:m.api_id.value,api_hash:m.api_hash.value}); qrb.disabled=false; ayt(d);
+      const d=await sozSorov(p+'_qr',{api_id:m.api_id.value,api_hash:m.api_hash.value}); qrb.disabled=false; ayt(d);
       if(d.ok && !/allaqachon/.test(d.xabar||'')){ clearInterval(qrTaymer); qrTaymer=setInterval(qrKuzat,2000); setTimeout(qrKuzat,800); }
       else if(d.ok) setTimeout(sozlamalarniYukla,1200); };
     b.appendChild(qrb);
     const kb=matnli('button','tugma ikkinchi','📨 Kod bilan kirish'); kb.style.marginTop='12px';
     kb.onclick=async()=>{ kb.disabled=true; nat.textContent='⏳ Telegram\'ga ulanyapman...'; nat.style.color='';
-      const d=await sozSorov('tga_kod',{api_id:m.api_id.value,api_hash:m.api_hash.value,telefon:m.telefon.value}); kb.disabled=false; ayt(d);
+      const d=await sozSorov(p+'_kod',{api_id:m.api_id.value,api_hash:m.api_hash.value,telefon:m.telefon.value}); kb.disabled=false; ayt(d);
       if(d.ok){ kq.style.display='grid'; qy.style.display=''; } };
     b.appendChild(kb); b.appendChild(qrJoy);
     b.appendChild(e('div','izoh',"Telefon raqami faqat <b>kod bilan kirish</b> uchun kerak. QR uchun faqat api_id va api_hash yetarli."));
@@ -463,16 +465,30 @@ function telegramAkkauntBolimi(ich, T){
     const kod=e('input','maydon'); kod.placeholder='Telegram\'dan kelgan kod'; kod.inputMode='numeric';
     const par=e('input','maydon'); par.type='password'; par.placeholder='2 bosqichli parol (bo\'lsa)';
     const kir=matnli('button','tugma','Kirish');
-    kir.onclick=async()=>{ kir.disabled=true; const d=await sozSorov('tga_kirish',{kod:kod.value,parol:par.value}); kir.disabled=false; ayt(d);
+    kir.onclick=async()=>{ kir.disabled=true; const d=await sozSorov(p+'_kirish',{kod:kod.value,parol:par.value}); kir.disabled=false; ayt(d);
       if(d.ok) setTimeout(sozlamalarniYukla, 1500); };
     kq.appendChild(kod); kq.appendChild(par); kq.appendChild(kir); b.appendChild(kq);
     const qy=matnli('button','tugma ikkinchi','📱 Kod kelmadi — SMS orqali qayta yuborish'); qy.style.marginTop='10px';
     qy.style.display=T.holat==='ulanmagan'?'none':'';
     qy.onclick=async()=>{ qy.disabled=true; nat.textContent='⏳ So\'rayapman...'; nat.style.color='';
-      const d=await sozSorov('tga_qayta',1); qy.disabled=false; ayt(d); };
+      const d=await sozSorov(p+'_qayta',1); qy.disabled=false; ayt(d); };
     b.appendChild(qy);
     b.appendChild(e('div','izoh',"💡 Kod odatda <b>SMS'ga emas</b>, telefoningizdagi Telegram ilovasiga — <b>\"Telegram\"</b> nomli rasmiy chatga (ko'k ✓ belgili) keladi."));
     b.appendChild(e('div','izoh',"🔒 Kirish kaliti faqat shu kompyuterda saqlanadi. Kodni hech kimga aytmang — Jarvis ham uni faqat Telegram'ga yuboradi."));
+  } else if(p==='tgb'){
+    b.appendChild(matnli('div','izoh','Ulangan akkaunt: '+(T.men||'')+'  ·  avtomatik javoblar: '+(T.javoblar||0)));
+    const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','','Avtomatik javob (Claude)'));
+    t.appendChild(matnli('small','',"Yoqilsa — shaxsiy xabar yozgan har kimga Claude javob beradi (soatiga 60 tagacha)"));
+    r.appendChild(t); r.appendChild(almashtirgich(T.yoniq,'tgb_yoniq')); b.appendChild(r);
+    b.appendChild(e('div','izoh',"<b>Kompaniya sayti</b> — Claude undagi ma'lumotni o'qib oladi:"));
+    b.appendChild(kiritish(T.sayt,'gatework.uz','tgb_sayt','Saqlash'));
+    b.appendChild(e('div','izoh',"<b>Kompaniya haqida</b> — Claude faqat shunga tayanadi (ish turlari, qanday ro'yxatdan o'tiladi, ish vaqti, operator bilan bog'lanish...). Yo'q narsani o'ylab topmaydi:"));
+    const ta=e('textarea','maydon'); ta.value=T.malumot||''; ta.rows=6; ta.style.cssText='width:100%;box-sizing:border-box;resize:vertical;margin-top:6px';
+    ta.placeholder="Masalan: Gatework.uz — ish qidiruvchilar va ish beruvchilar uchun sayt. Ro'yxatdan o'tish bepul. Rezyume saytda joylanadi. Operator: 9:00–18:00.";
+    const sq=matnli('button','tugma','Saqlash'); sq.style.marginTop='8px'; sq.onclick=()=>sozYoz('tgb_malumot',ta.value);
+    b.appendChild(ta); b.appendChild(sq);
+    const u=matnli('button','tugma ikkinchi','Akkauntni uzish'); u.style.marginTop='12px'; u.style.marginLeft='10px';
+    u.onclick=()=>{ if(confirm("2-Telegram akkaunt uzilsinmi? Kirish kaliti o'chiriladi.")) sozYoz('tgb_chiqish',1); }; b.appendChild(u);
   } else {
     b.appendChild(matnli('div','izoh','Ulangan akkaunt: '+(T.men||'')));
     b.appendChild(e('div','izoh',"<b>Kuzatiladigan do'stlar</b> — ismi (Telegram'dagidek), @username yoki telefon raqami, vergul bilan:"));
@@ -721,6 +737,7 @@ async function sozlamalarniYukla(){
   ich.appendChild(b);
 
   telegramAkkauntBolimi(ich, S.tga);
+  telegramAkkauntBolimi(ich, S.tgb, 'tgb');
 
   if(S.ig){
     b=bolim('📸','Instagram (rasmiy API)',"Ulansa: <b>\"Jarvis, instagramga videoni joyla\"</b> — videoni topadi, tavsif va heshteglarni Claude yozadi, "+

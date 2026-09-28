@@ -11,7 +11,7 @@ curl -L -o modellar\face_recognition_sface_2021dec.onnx https://media.githubuser
 curl -L -o modellar\object_detection_nanodet_2022nov.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx
 %PY% -m PyInstaller --noconfirm --onefile --windowed --name Jarvis --icon jarvis.ico ^
   --add-data "chat.html;." --add-data "jarvis.png;." --add-data "modellar;modellar" --collect-data speech_recognition --collect-all uiautomation ^
-  --collect-submodules shazamio --collect-all webview --collect-submodules anthropic --collect-submodules telethon --hidden-import telegram_akkaunt --hidden-import qrcode --hidden-import instagram_brauzer --hidden-import sayt --collect-all playwright --hidden-import clr --hidden-import pyaudio jarvis.py
+  --collect-submodules shazamio --collect-all webview --collect-submodules anthropic --collect-submodules telethon --hidden-import telegram_akkaunt --hidden-import qrcode --hidden-import instagram_brauzer --hidden-import sayt --hidden-import telegram_javobchi --collect-all playwright --hidden-import clr --hidden-import pyaudio jarvis.py
 echo.
 echo Tayyor: dist\Jarvis.exe
 echo O'rnatuvchi uchun: jarvis_setup.iss ni Inno Setup da oching va Compile bosing
