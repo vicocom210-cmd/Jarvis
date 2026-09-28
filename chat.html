@@ -725,7 +725,8 @@ async function sozlamalarniYukla(){
   if(S.ig){
     b=bolim('📸','Instagram (rasmiy API)',"Ulansa: <b>\"Jarvis, instagramga videoni joyla\"</b> — videoni topadi, tavsif va heshteglarni Claude yozadi, "+
       "siz tasdiqlagach joylaydi (<b>\"...ertaga soat 19 da\"</b> — vaqtga qo'yish). <b>\"Instagramdagi izohlarni o'qi\"</b>, "+
-      "<b>\"Instagram statistikasi\"</b>. Parol emas — Meta'ning rasmiy kaliti (token) ishlatiladi, akkaunt bloklanmaydi.");
+      "<b>\"Instagram statistikasi\"</b>.<br>🔑 <b>Kalitsiz ham ishlaydi:</b> Jarvis brauzerdagi Instagram'ni (siz kirgan akkaunt) o'zi ochib, videoni yuklaydi va tavsifni qo'yadi — "+
+      "'Ulashish'ni siz bosasiz. Kalit (Meta token) bo'lsa — to'liq avtomatik, vaqtga qo'yish, izohlar va statistika ham ishlaydi. Parol hech qachon so'ralmaydi.");
     b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(S.ig.bor?'yashil':'kulrang'), S.ig.bor?('@'+S.ig.username):'Ulanmagan'));
     if(S.ig.rejalar) b.appendChild(matnli('div','izoh','⏰ Rejadagi postlar: '+S.ig.rejalar+' ta (shu vaqtda kompyuter yoqiq bo\'lsin)'));
     b.appendChild(kiritish('', S.ig.bor?'•••• kalit saqlangan (almashtirish uchun yangisini qo\'ying)':'IGAA... yoki EAA... (Instagram kaliti)','ig_token','Ulash','password'));

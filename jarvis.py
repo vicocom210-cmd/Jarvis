@@ -1269,15 +1269,78 @@ def ig_rejalarni_tikla():
         threading.Timer(max(qoldi, 5), _ig_joyla_fonda, args=(r["fayl"], r["tavsif"], True)).start()
 
 
+IG_BOSQICH = {                   # Instagram veb-sahifasidagi tugmalar (ingliz / rus / o'zbek / turk)
+    "yarat": ("Create", "Создать", "Yaratish", "Oluştur"),
+    "post": ("Post", "Публикация", "Gönderi"),
+    "tanla": ("Select from computer", "Выбрать на компьютере", "Kompyuterdan tanlash", "Bilgisayardan seç"),
+    "ok": ("OK",),
+    "keyingi": ("Next", "Далее", "Keyingi", "İleri"),
+    "tavsif": ("Write a caption", "Добавьте подпись", "Izoh yozing", "Açıklama yaz"),
+}
+
+
+def _ig_kut_bos(kalitlar, urinish=6, oraliq=2.0):
+    """Ekranda tugma paydo bo'lishini kutib bosadi (sahifa sekin yuklanishi mumkin)."""
+    for _ in range(urinish):
+        try:
+            if boshqaruv.kalitlardan_bos(kalitlar):
+                return True
+        except Exception as xato:
+            print(f"(Ekranni o'qib bo'lmadi: {xato})")
+        time.sleep(oraliq)
+    return False
+
+
+def _ig_brauzerda_joyla(fayl, tavsif):
+    """API'siz: brauzerdagi Instagram'da (siz kirgan akkauntda) Jarvis tugmalarni o'zi bosadi.
+    Oxirgi 'Ulashish' tugmasini xavfsizlik uchun SIZ bosasiz."""
+    if tavsif:
+        pyperclip.copy(tavsif)                         # har ehtimolga: tavsif nusxada turadi
+    jarvisni_yashir(90)
+    webbrowser.open("https://www.instagram.com/")
+    time.sleep(9)
+    qolgan = ("Qolganini qo'lda qiling: '+ Yaratish' → 'Kompyuterdan tanlash' → videoni tanlang → 'Keyingi' → "
+              "'Keyingi' → tavsif joyiga Ctrl+V → 'Ulashish'.")
+    if not _ig_kut_bos(IG_BOSQICH["yarat"]):
+        kompyuter.papkada_korsat(fayl)
+        gapir("Instagram sahifasida 'Yaratish' tugmasini topolmadim — Instagram'ga kirganmisiz? " + qolgan)
+        return
+    time.sleep(1.5)
+    boshqaruv.kalitlardan_bos(IG_BOSQICH["post"])     # yangi menyuda 'Post' bandi bo'ladi
+    if not _ig_kut_bos(IG_BOSQICH["tanla"]):
+        kompyuter.papkada_korsat(fayl)
+        gapir("'Kompyuterdan tanlash' tugmasini topolmadim. " + qolgan)
+        return
+    time.sleep(2.5)                                    # Windows fayl tanlash oynasi ochiladi
+    pyperclip.copy(fayl)
+    pyautogui.hotkey("ctrl", "v")
+    time.sleep(0.4)
+    pyautogui.press("enter")
+    time.sleep(6)                                      # video yuklanadi
+    boshqaruv.kalitlardan_bos(IG_BOSQICH["ok"])       # "Video endi Reels bo'lib joylanadi" oynasi
+    for _ in range(2):                                 # Kesish -> Tahrirlash -> Tavsif
+        if not _ig_kut_bos(IG_BOSQICH["keyingi"], urinish=5):
+            gapir("'Keyingi' tugmasini topolmadim. " + qolgan)
+            return
+        time.sleep(2.5)
+    if tavsif:
+        if _ig_kut_bos(IG_BOSQICH["tavsif"], urinish=4):
+            time.sleep(0.5)
+            pyperclip.copy(tavsif)
+            pyautogui.hotkey("ctrl", "v")
+        else:
+            gapir("Tavsif maydonini topolmadim — uni bosib, Ctrl+V qiling.")
+            return
+    ui_navbat.put(("korsat",))
+    gapir("Hammasi tayyor! Tekshirib ko'ring va 'Ulashish' (Share) tugmasini o'zingiz bosing.")
+
+
 def ig_joylash(b):
     try:
         ig = ig_ol()
     except Exception as xato:
-        gapir(f"Instagramga ulanib bo'lmadi: {xato}")
-        return
-    if not ig:
-        gapir("Instagram ulanmagan. Chat sozlamalarida Instagram bo'limiga kalitni qo'ying.")
-        return
+        print(f"(Instagram API: {xato}) — brauzer rejimiga o'taman")
+        ig = None
     import instagram
     ortiqcha = {"instagram", "instagramga", "insta", "instaga", "videoni", "video", "reels", "joyla", "yukla",
                 "qo'y", "post", "qil", "ertaga", "soat", "da", "ga", "ni", "mening", "shu", "oxirgi"}
@@ -1305,6 +1368,13 @@ def ig_joylash(b):
         gapir("Bekor qildim. Qaytadan urinib ko'ring.")
         return
     vaqt = _ig_vaqt(b)
+    if not ig:                                          # API ulanmagan — brauzer orqali (parolsiz, xavfsiz)
+        if vaqt and not tasdiqla("Vaqtga qo'yish faqat Instagram kaliti ulansa ishlaydi. Hozir joylaymi?"):
+            gapir("Mayli. Instagram ilovasining o'zida ham 'Rejalashtirish' bor — Kengaytirilgan sozlamalarda.")
+            return
+        gapir("Instagram'ni ochib, videoni o'zim yuklayman. Bu vaqtda sichqoncha va klaviaturaga tegmang.")
+        fonda(_ig_brauzerda_joyla, fayl, tavsif)
+        return
     if vaqt:
         rejalar = [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl]
         sozlama_ozgartir("ig_rejalar", rejalar + [{"vaqt": vaqt, "fayl": fayl, "tavsif": tavsif}], ayt=False)
