@@ -166,7 +166,7 @@
 <body>
 <div class="aura"></div>
 <div class="qatlam">
-  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.5</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
+  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.6</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
   <div class="tablar2">
     <div class="tab2 faol" id="tabBuyruq" onclick="bolimTanla('buyruq')">💬 Buyruqlar</div>
     <div class="tab2" id="tabKamera" onclick="bolimTanla('kamera')">📹 Kamera</div>
@@ -263,7 +263,7 @@
       <div class="izoh" id="s-pin-iz">PIN kod — kompyuterdagi Jarvis chat sozlamalaridagi PIN. Eshikni ochish uchun kamida 6 raqam bo'lishi kerak.</div>
     </div>
     <button class="knop" id="s-saqla" onclick="sozlamaSaqla()">Saqlash</button>
-    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.5</div>
+    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.6</div>
   </div>
 </div>
 
@@ -496,12 +496,25 @@ async function kompgaYubor(){                    // kompyuter o'chiqligida telef
     try{ const d=await telSorov('qosh',{nom:k.nom,ip:k.ip,login:k.login,parol:k.parol,kanal:k.kanal},40);
          if(d.ok||d.saqlandi){ k.yuborilsin=false; ozg=true; } }catch(e){} }
   if(ozg) MKyoz(m); return ozg; }
-async function togriRejim(holat, royxat){        // kompyuter javob bermadi — kameralarga o'zimiz
-  const kl=Object.values(MKol());
-  if(!kl.length || !window.Android || !Android.kameraRasm) return false;
+function keshdanMK(){                            // kompyuterdan oxirgi olingan ro'yxat (parolsiz) — boshlang'ich
+  const m=MKol(); if(Object.keys(m).length) return m;
+  let d=null; try{ d=JSON.parse(localStorage.getItem('kameralar')||'null'); }catch(e){}
+  for(const k of (d&&d.kameralar)||[]) if(k.ip) m[k.nom]={nom:k.nom, ip:k.ip, login:k.login||'admin', kanal:k.kanal||'1',
+                                                         http_port:k.http_port||80, parol:'', eshik:!!k.eshik};
+  MKyoz(m); return m; }
+async function togriRejim(holat, royxat, majburiy){  // kompyuter javob bermadi — kameralarga o'zimiz
+  const kl=Object.values(keshdanMK());
+  if(!window.Android || !Android.kameraRasm) return false;
+  if(!kl.length){
+    if(!majburiy) return false;
+    togri=true; uyda=false; royxat.innerHTML=''; document.getElementById('eshikKarta').classList.add('yashir');
+    holat.className='kam-izoh ogoh';
+    holat.textContent="💻 Kompyuterga ulanib bo'lmadi, telefonda hali kamera yo'q. '➕ Kamera qo'shish' bilan telefonning o'ziga qo'shing — "+
+      "uy Wi-Fi'da kameraga to'g'ridan-to'g'ri ulanaman. Kompyuter ulansa, unga ham o'zi qo'shiladi.";
+    return true; }
   holat.className='kam-izoh'; holat.textContent="⏳ Kompyuter javob bermayapti — kameralarga o'zim ulanyapman...";
   const sinov=await togridanRasm(kl.find(k=>k.parol)||kl[0]);
-  if(!sinov.ok && !sinov.yetib) return false;   // kamera ham ko'rinmaydi — uydan tashqaridamiz
+  if(!sinov.ok && !sinov.yetib && !majburiy) return false;   // kamera ham ko'rinmaydi — uydan tashqaridamiz
   togri=true; uyda=false;
   holat.className='kam-izoh ogoh';
   holat.textContent="💻 Kompyuter o'chiq — kameralarni telefon o'zi ko'rsatyapti. Eshikni ochish va skanerlash uchun kompyuter yoqilgan bo'lishi kerak.";
@@ -530,14 +543,18 @@ async function kameraYukla(){
     holat.textContent='🏠 Uy Wi-Fi — jonli ko\'rish mumkin. Kamerani bosing.';
     if(!d.versiya){ holat.className='kam-izoh ogoh'; holat.textContent=ESKI_KOMP; }
   } else if(d && d.xato){
-    holat.className='kam-izoh ogoh'; holat.textContent='⚠ '+d.xato; return;
+    if(!(await togriRejim(holat, royxat))){ holat.className='kam-izoh ogoh'; }
+    holat.textContent='⚠ Kompyuter: '+d.xato+' — ⚙ dagi PIN kompyuterdagi Jarvis chat sozlamalaridagi PIN bilan bir xil bo\'lsin. '+
+      (togri?"Hozircha kameralarni telefon o'zi ko'rsatyapti.":''); return;
   } else if(await togriRejim(holat, royxat)){
     return;
   } else {
     uyda=false; togri=false; try{ d=JSON.parse(localStorage.getItem('kameralar')||'null'); }catch(e){ d=null; }
     holat.className='kam-izoh ogoh';
-    holat.textContent = S.kanal ? '🌍 Uydan tashqaridasiz: eshik va skanerlash internet orqali ishlaydi, kamera rasmlari Telegram\'ga keladi.'
-                                : '⚠ Kompyuterga ulanib bo\'lmadi. ⚙ da IP yoki bulut kanalini tekshiring.';
+    holat.textContent = (S.kanal ? '🌍 Kompyuterga Wi-Fi orqali ulanib bo\'lmadi (IP: '+(S.ip||'yo\'q')+'). Uydan tashqarida bo\'lsangiz — eshik va skanerlash internet orqali ishlaydi, kamera rasmlari Telegram\'ga keladi. '
+                                : '⚠ Kompyuterga ulanib bo\'lmadi (IP: '+(S.ip||'yo\'q')+'). ')+
+      'Uydamisiz? Kompyuter yoqilganmi va ⚙ dagi IP kompyuterdagi Jarvis chat sozlamalaridagi (📱 Telefon ilovasi) manzilga mosmi — tekshiring. '+
+      '➕ Kamera qo\'shish bilan kamerani telefonning o\'ziga ham qo\'shsa bo\'ladi.';
     if(!d){ royxat.innerHTML=''; document.getElementById('eshikKarta').classList.toggle('yashir', !S.kanal); return; }
   }
   document.getElementById('eshikKarta').classList.toggle('yashir', !d.eshik);
@@ -564,8 +581,9 @@ const ESKI_KOMP="⚠ Kompyuterdagi Jarvis ESKI versiya — kamera qo'shish/o'zga
 function eskimi(d){ return d && /Noma.lum amal/.test(d.xato||''); }
 function $(id){ return document.getElementById(id); }
 function qoshOch(k){
-  if(!uyda && !togri){ const h=$('kamHolat'); h.className='kam-izoh ogoh';
-    h.textContent="⚠ Kamera qo'shish faqat uy Wi-Fi'da ishlaydi (kamera paroli internetdan o'tmasin)."; return; }
+  if(!uyda && !togri){
+    if(window.Android && Android.kameraRasm){ togri=true; }          // kompyutersiz — telefonning o'zida saqlaymiz
+    else { alert("Kamera qo'shish uchun telefon uy Wi-Fi'da bo'lishi kerak."); return; } }
   tahrirNom=k?k.nom:null;
   $('qoshSarl').textContent=k?('✏️ '+k.nom):'➕ Yangi kamera';
   $('kq-nom').value=k?k.nom:''; $('kq-nom').disabled=!!k;
