@@ -30,6 +30,13 @@ def ishga_tushir(kanal, pin, bajaruvchi):
     global _klient
     if mqtt is None:
         return "yoq_kutubxona"
+    if _klient is not None:                          # qayta ulanish (masalan, PIN o'zgardi)
+        try:
+            _klient.loop_stop()
+            _klient.disconnect()
+        except Exception:
+            pass
+        _klient = None
     cmd_mavzu = f"jarvis/{kanal}/cmd"
     reply_mavzu = f"jarvis/{kanal}/reply"
 

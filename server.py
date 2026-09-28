@@ -20,11 +20,13 @@ _pin = "0000"
 _server = None
 _chat_qabul = None          # (matn) -> None  — chat oynasidan yozilgan gap (jarvis.py beradi)
 _holat_ol = None            # () -> "kutish"/"tinglash"/"o'ylash"/"gapirish"
+_sozlama_ol = None          # () -> dict  — chatdagi sozlamalar bo'limi uchun
+_sozlama_yoz = None         # (kalit, qiymat) -> (ok, xabar)
 
 
-def chat_sozla(qabul, holat_ol):
-    global _chat_qabul, _holat_ol
-    _chat_qabul, _holat_ol = qabul, holat_ol
+def chat_sozla(qabul, holat_ol, sozlama_ol=None, sozlama_yoz=None):
+    global _chat_qabul, _holat_ol, _sozlama_ol, _sozlama_yoz
+    _chat_qabul, _holat_ol, _sozlama_ol, _sozlama_yoz = qabul, holat_ol, sozlama_ol, sozlama_yoz
 
 
 def _manba_yoli(nom):
@@ -79,6 +81,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(tana)))
             self.end_headers()
             self.wfile.write(tana)
+        elif yol.path == "/api/sozlamalar":
+            self._javob(200, {"ok": True, **(_sozlama_ol() if _sozlama_ol else {})})
         elif yol.path == "/api/kunlar":
             self._javob(200, {"ok": True, "kunlar": arxiv.kunlar()})
         elif yol.path == "/api/kun":
@@ -111,6 +115,15 @@ class _Handler(BaseHTTPRequestHandler):
                 if matn and _chat_qabul:
                     _chat_qabul(matn)
                 self._javob(200, {"ok": bool(matn)})
+            elif self.path.startswith("/api/sozlama"):
+                if not _sozlama_yoz:
+                    self._javob(503, {"ok": False, "xabar": "Jarvis tayyor emas"})
+                    return
+                try:
+                    ok, xabar = _sozlama_yoz(str(malumot.get("kalit", "")), malumot.get("qiymat"))
+                except Exception as xato:
+                    ok, xabar = False, f"Xato: {xato}"
+                self._javob(200, {"ok": ok, "xabar": xabar})
             elif self.path.startswith("/api/ochir"):
                 self._javob(200, {"ok": arxiv.ochir(malumot.get("sana", ""))})
             else:

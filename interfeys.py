@@ -483,7 +483,11 @@ class Oyna:
                           "sozlama": ekran_olchami()}
         self.katta_koef = koef
         self.kichik_joy = (ong - 340 - 16, past - 500 - 16)
-        os.environ["SDL_VIDEO_WINDOW_POS"] = f"{self.kichik_joy[0]},{self.kichik_joy[1]}"
+        # Oyna kutishda ko'rinmaydi; birinchi marta chiqqanda burchakda emas, o'rtada bo'lsin
+        eni_k, boyi_k = self.olchamlar["katta"]
+        self.kerakli_joy = ((chap + ong - eni_k) // 2, (tepa + past - boyi_k) // 2)
+        self.joy_tekshir_gacha = 0.0
+        os.environ["SDL_VIDEO_WINDOW_POS"] = f"{self.kerakli_joy[0]},{self.kerakli_joy[1]}"
         self.rejim = "kichik"
         self.ekran = pygame.display.set_mode(self.olchamlar["kichik"], pygame.NOFRAME)
         pygame.display.set_caption("Jarvis")
@@ -548,7 +552,8 @@ class Oyna:
         self.chizilgan = []               # shu kadrda chizilgan tugmalar id'lari
         self.sichqoncha = (0, 0)
         self.yashirin_gacha = 0           # shu vaqtgacha oyna yashirin
-        self.yashirin = False
+        oyna_korinishi(False)             # kutish rejimida — yashirin (burchakda miltillamasin)
+        self.yashirin = True
         self.joylash()
 
     def _ikonka(self):
@@ -616,15 +621,21 @@ class Oyna:
             self.kichik_joy = oyna_joyi() if os.name == "nt" else self.kichik_joy
         self.rejim = rejim
         eni, boyi = self.olchamlar[rejim]
-        self.ekran = pygame.display.set_mode((eni, boyi), pygame.NOFRAME)
-        windows_sozla(0 if rejim == "sozlama" else 255)
         if rejim == "sozlama":
-            oynani_sur(0, 0)
+            joy = (0, 0)
         elif rejim == "katta":
             chap, tepa, ong, past = self.maydon
-            oynani_sur((chap + ong - eni) // 2, (tepa + past - boyi) // 2)
+            joy = ((chap + ong - eni) // 2, (tepa + past - boyi) // 2)     # ekran o'rtasi
         else:
-            oynani_sur(*self.kichik_joy)
+            joy = self.kichik_joy
+        # pygame o'lcham o'zgarganda oynani SDL_VIDEO_WINDOW_POS joyiga qaytaradi —
+        # shuning uchun avval yangi joyni aytamiz (aks holda burchakda qolib ketadi)
+        os.environ["SDL_VIDEO_WINDOW_POS"] = f"{joy[0]},{joy[1]}"
+        self.ekran = pygame.display.set_mode((eni, boyi), pygame.NOFRAME)
+        windows_sozla(0 if rejim == "sozlama" else 255)
+        oynani_sur(*joy)
+        self.kerakli_joy = joy
+        self.joy_tekshir_gacha = time.time() + 1.5          # bir necha kadr davomida tekshirib turamiz
         self.joylash()
         self.kirish = 0.0
 
@@ -809,6 +820,13 @@ class Oyna:
 
     # ----- holat va animatsiya -----
     def holatni_yangila(self, dt):
+        # Avval o'lcham va joy (o'rtada katta / sozlamalar — butun ekran), keyin ko'rsatamiz —
+        # shunda oyna eski o'lchamda miltillab ko'rinmaydi.
+        if self.sozlama_ochiq or self.soz_t > 0.01:
+            self.rejimga_ot("sozlama")
+        elif self.holat != "kutish":
+            self.rejimga_ot("katta")
+
         # Kutish rejimida oyna umuman ko'rinmaydi (burchakda ham turmaydi).
         # Faqat "Jarvis" deganda (holat != kutish) yoki sozlama ochilganda ko'rinadi,
         # keyin buyruq bajarilib kutishga qaytgach — yana ekrandan yo'qoladi.
@@ -817,12 +835,12 @@ class Oyna:
         if yashirin != self.yashirin:
             self.yashirin = yashirin
             oyna_korinishi(not yashirin)
-
-        # Sozlamalar ochiq — butun ekran; faol bo'lsa — markazda katta.
-        if self.sozlama_ochiq or self.soz_t > 0.01:
-            self.rejimga_ot("sozlama")
-        elif self.holat != "kutish":
-            self.rejimga_ot("katta")
+            if not yashirin:
+                self.joy_tekshir_gacha = time.time() + 1.0   # qayta chiqdi — joyi to'g'rimi?
+        # Oyna kerakli joyda (o'rtada) ekanini tekshiramiz — Windows/SDL siljitib qo'ysa, qaytaramiz
+        if os.name == "nt" and not self.yashirin and time.time() < self.joy_tekshir_gacha \
+                and not self.surish and oyna_joyi() != tuple(self.kerakli_joy):
+            oynani_sur(*self.kerakli_joy)
 
         if self.rejim == "sozlama":
             oldingi = self.soz_t

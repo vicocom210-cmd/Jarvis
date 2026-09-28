@@ -541,3 +541,7 @@ def avtostart(yoqilsin=True):
     except OSError as xato:
         print(f"(Avtostart xatosi: {xato})")
         return False
+
+
+def avtostart_bormi():
+    return WINDOWS and os.path.exists(_avtostart_fayli())

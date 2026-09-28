@@ -60,6 +60,8 @@ from tarjima import tarjima
 # Ovoz, til, rang va ism — oynadagi ⚙ menyusidan yoki ovoz bilan o'zgartiriladi
 SOZ = sozlamalar.yukla()
 ISM = SOZ["ism"]                 # Jarvis sizni shunday chaqiradi
+if SOZ.get("groq_kalit") and not os.environ.get("GROQ_API_KEY"):
+    os.environ["GROQ_API_KEY"] = SOZ["groq_kalit"]     # chatdagi sozlamalarda kiritilgan AI kaliti
 SUHBAT_VAQTI = 8                 # buyruqdan keyin shuncha soniya "Jarvis" demasdan gapirsa bo'ladi
 
 try:
@@ -366,7 +368,7 @@ def sozlama_ozgartir(kalit, qiymat, ayt=True):
     ui_navbat.put(("sozlamalar", dict(SOZ)))
     if ayt:
         gapir(f"Yaxshi, endi sizni {ISM} deb chaqiraman." if kalit == "ism"
-              else SOZLAMA_JAVOBLARI[kalit])
+              else SOZLAMA_JAVOBLARI.get(kalit, "Sozlama saqlandi."))
         if kalit in ("telegram_token", "telegram_egasi"):
             telegram_ishga_tushir()             # yangi token yoki uzildi — bot qayta ulanadi
 
@@ -1006,10 +1008,10 @@ def eslatma_vaqti(ish, kechikdi=False):
     gapir(matn, uzilmas=True)
 
 
-def chat_och():
+def chat_och(sozlama=False):
     """Chat oynasini alohida dastur oynasi kabi ochadi (Edge/Chrome "ilova" rejimi).
-    Brauzer topilmasa — oddiy brauzerda."""
-    url = f"http://127.0.0.1:{server.PORT}/chat"
+    Brauzer topilmasa — oddiy brauzerda. sozlama=True — darhol sozlamalar bo'limida."""
+    url = f"http://127.0.0.1:{server.PORT}/chat" + ("?soz=1" if sozlama else "")
     if os.name == "nt":
         yollar = [os.path.expandvars(p) for p in (
             r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
@@ -1025,6 +1027,90 @@ def chat_och():
                 except OSError:
                     pass
     webbrowser.open(url)
+
+
+def chat_sozlamalari():
+    """Chatdagi sozlamalar bo'limi uchun joriy holat (maxfiy kalitlar ko'rsatilmaydi)."""
+    token = SOZ.get("telegram_token", "")
+    return {
+        "qiymatlar": {"ism": SOZ["ism"], "ovoz": SOZ["ovoz"], "til": SOZ["til"], "rang": SOZ["rang"],
+                      "shahar": SOZ.get("shahar", "toshkent"), "chat_avto": SOZ.get("chat_avto", True),
+                      "telefon_pin": str(SOZ.get("telefon_pin") or "0000")},
+        "tillar": {k: v["nomi"] for k, v in sozlamalar.TILLAR.items()},
+        "ranglar": {k: {"nomi": v["nomi"], "rang": "#%02x%02x%02x" % v["yorqin"]}
+                    for k, v in sozlamalar.RANGLAR.items()},
+        "shaharlar": {k: v[1] for k, v in qulayliklar.SHAHARLAR.items() if k != "fargona"},
+        "ai": {"bor": sun_iy.bormi(), "ozimizniki": bool(SOZ.get("groq_kalit"))},
+        "telegram": {"token": ("•••• " + token[-4:]) if token else "", "egasi": bool(SOZ.get("telegram_egasi")),
+                     "ishlayapti": bool(bot)},
+        "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
+        "avtostart": kompyuter.avtostart_bormi(),
+        "papka": sozlamalar.PAPKA,
+    }
+
+
+def chat_sozlama_yoz(kalit, qiymat):
+    """Chatdagi sozlamalar bo'limidan kelgan o'zgarish. (ok, xabar) qaytaradi."""
+    if kalit == "ism":
+        qiymat = str(qiymat or "").strip()[:40]
+        if not qiymat:
+            return False, "Ism bo'sh bo'lmasin."
+        sozlama_ozgartir("ism", qiymat, ayt=False)
+        return True, f"Endi sizni {qiymat} deb chaqiraman."
+    if kalit == "ovoz" and qiymat in ("ayol", "erkak"):
+        sozlama_ozgartir("ovoz", qiymat, ayt=False)
+        return True, "Ovoz o'zgardi."
+    if kalit == "ovoz_sinov" and qiymat in ("ayol", "erkak"):
+        kirish_navbat.put(("ovoz_sinov", qiymat, time.time()))
+        return True, "Eshiting..."
+    if kalit == "til" and qiymat in sozlamalar.TILLAR:
+        sozlama_ozgartir("til", qiymat, ayt=False)
+        return True, "Til o'zgardi."
+    if kalit == "rang" and qiymat in sozlamalar.RANGLAR:
+        sozlama_ozgartir("rang", qiymat, ayt=False)
+        return True, "Rang o'zgardi."
+    if kalit == "shahar" and qiymat in qulayliklar.SHAHARLAR:
+        sozlama_ozgartir("shahar", qiymat, ayt=False)
+        return True, f"Shahar: {qulayliklar.SHAHARLAR[qiymat][1]}."
+    if kalit == "chat_avto":
+        sozlama_ozgartir("chat_avto", bool(qiymat), ayt=False)
+        return True, "Saqlandi."
+    if kalit == "avtostart":
+        ok = kompyuter.avtostart(bool(qiymat))
+        return ok, ("Windows bilan birga ishga tushaman." if qiymat else "Avtomatik ishga tushish o'chirildi.") \
+            if ok else "Sozlab bo'lmadi."
+    if kalit == "telefon_pin":
+        qiymat = str(qiymat or "").strip()
+        if not re.fullmatch(r"\d{4,8}", qiymat):
+            return False, "PIN 4-8 ta raqamdan iborat bo'lsin."
+        sozlama_ozgartir("telefon_pin", qiymat, ayt=False)
+        server._pin = qiymat                            # telefon ilovasi (Wi-Fi) darhol yangi PIN bilan
+        if SOZ.get("telefon_kanal"):
+            fonda(bulut.ishga_tushir, SOZ["telefon_kanal"], qiymat, web_bajar)
+        return True, "PIN o'zgardi. Telefon ilovasida ham yangi PIN'ni kiriting."
+    if kalit == "telegram_token":
+        qiymat = str(qiymat or "").strip()
+        if qiymat and not re.fullmatch(r"\d{5,}:[\w-]{20,}", qiymat):
+            return False, "Token noto'g'ri ko'rinishda. BotFather bergan tokenni to'liq qo'ying."
+        sozlama_ozgartir("telegram_token", qiymat, ayt=False)
+        telegram_ishga_tushir()
+        return True, "Telegram bot ulanmoqda — Jarvis oynasida juftlash kodi chiqadi." if qiymat \
+            else "Telegram bot o'chirildi."
+    if kalit == "telegram_uz":
+        sozlama_ozgartir("telegram_egasi", 0, ayt=False)
+        telegram_ishga_tushir()
+        return True, "Telegram uzildi. Qayta ulash uchun yangi kod chiqadi."
+    if kalit == "groq_kalit":
+        qiymat = str(qiymat or "").strip()
+        if qiymat and not qiymat.startswith("gsk_"):
+            return False, "Groq kaliti 'gsk_' bilan boshlanadi. console.groq.com dan oling."
+        sozlama_ozgartir("groq_kalit", qiymat, ayt=False)
+        if qiymat:
+            os.environ["GROQ_API_KEY"] = qiymat
+            return True, "Sun'iy intellekt ulandi. Endi har qanday savolga javob beraman."
+        os.environ.pop("GROQ_API_KEY", None)
+        return True, "AI kaliti o'chirildi."
+    return False, "Noma'lum sozlama."
 
 
 def chatdan_keldi(matn):
@@ -1119,7 +1205,7 @@ def sozlama_buyrugi(b):
             ui_navbat.put(("sozlamalarni_yop",))
             gapir("Sozlamalar yopildi.")
         else:
-            ui_navbat.put(("sozlamalarni_och",))
+            chat_och(sozlama=True)                 # chat oynasidagi to'liq sozlamalar bo'limi
             gapir("Sozlamalarni ochdim.")
         return True
     if bor(b, "ovoz") and bor(b, "ayol", "qiz", "xotin", "женск"):
@@ -2044,7 +2130,7 @@ def miya():
     telegram_ishga_tushir()
     eslatmalar = qulayliklar.Eslatmalar(eslatma_vaqti)     # eski eslatmalar ham tiklanadi
     pin = str(SOZ.get("telefon_pin") or "0000")
-    server.chat_sozla(chatdan_keldi, lambda: joriy_holat)
+    server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
     if server.ishga_tushir(web_bajar, pin):
         print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
         print(f"💬 Chat va arxiv: http://127.0.0.1:{server.PORT}/chat")
