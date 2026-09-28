@@ -418,6 +418,48 @@ async function sozSorov(kalit, qiymat){
   const r=await fetch('/api/sozlama',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kalit,qiymat})});
   return r.json();
 }
+function telegramAkkauntBolimi(ich, T){
+  if(!T) return;
+  const b=bolim('💬','Telegram xabarlari (akkauntingiz)',"Tanlangan do'stingizdan xabar kelsa, Jarvis: <b>\"...dan xabar keldi, o'qib beraymi?\"</b> → o'qiydi → "+
+    "<b>\"javob yozaymi?\"</b> → aytganingizni tuzatib <b>\"to'g'ri yozdimmi?\"</b> deb so'raydi → tasdiqlasangiz yuboradi.");
+  const hb = T.holat==='ulangan' ? ['yashil','Ulangan'] : (T.holat==='kod_kutilmoqda'||T.holat==='parol_kerak') ? ['sariq','Kod kutilmoqda'] : ['kulrang','Ulanmagan'];
+  b.querySelector('h3').appendChild(matnli('span','holat-belgi '+hb[0], hb[1]));
+  const nat=e('div','izoh'); nat.style.marginTop='10px';
+  const ayt=(d)=>{ nat.textContent=(d.ok?'✅ ':'⚠️ ')+(d.xabar||''); nat.style.color=d.ok?'#8dffc9':'#ffb3b3'; };
+  if(T.holat!=='ulangan'){
+    b.appendChild(e('div','izoh',"<b>1-qadam (bir marta):</b> <a href=\"https://my.telegram.org/apps\" target=\"_blank\">my.telegram.org</a> ga "+
+      "telefon raqamingiz bilan kiring → <b>API development tools</b> → istalgan nom yozing → <b>api_id</b> va <b>api_hash</b> ni ko'chiring."));
+    const f=e('div'); f.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px';
+    const m={}; for(const [k,bel,tur] of [['api_id','api_id (raqam)',''],['api_hash','api_hash','password'],['telefon','Telefon: +998901234567','']]){
+      const i=e('input','maydon'); i.placeholder=bel; if(tur) i.type=tur; m[k]=i; f.appendChild(i); }
+    if(T.api_bor){ m.api_id.placeholder='api_id saqlangan'; m.api_hash.placeholder='api_hash saqlangan'; }
+    b.appendChild(f);
+    const kb=matnli('button','tugma','📨 Kod yuborish'); kb.style.marginTop='10px';
+    kb.onclick=async()=>{ kb.disabled=true; nat.textContent='⏳ Telegram\'ga ulanyapman...'; nat.style.color='';
+      const d=await sozSorov('tga_kod',{api_id:m.api_id.value,api_hash:m.api_hash.value,telefon:m.telefon.value}); kb.disabled=false; ayt(d);
+      if(d.ok) kq.style.display='grid'; };
+    b.appendChild(kb);
+    const kq=e('div'); kq.style.cssText='display:'+(T.holat==='ulanmagan'?'none':'grid')+';grid-template-columns:1fr 1fr auto;gap:10px;margin-top:12px';
+    const kod=e('input','maydon'); kod.placeholder='Telegram\'dan kelgan kod'; kod.inputMode='numeric';
+    const par=e('input','maydon'); par.type='password'; par.placeholder='2 bosqichli parol (bo\'lsa)';
+    const kir=matnli('button','tugma','Kirish');
+    kir.onclick=async()=>{ kir.disabled=true; const d=await sozSorov('tga_kirish',{kod:kod.value,parol:par.value}); kir.disabled=false; ayt(d);
+      if(d.ok) setTimeout(sozlamalarniYukla, 1500); };
+    kq.appendChild(kod); kq.appendChild(par); kq.appendChild(kir); b.appendChild(kq);
+    b.appendChild(e('div','izoh',"🔒 Kirish kaliti faqat shu kompyuterda saqlanadi. Kodni hech kimga aytmang — Jarvis ham uni faqat Telegram'ga yuboradi."));
+  } else {
+    b.appendChild(matnli('div','izoh','Ulangan akkaunt: '+(T.men||'')));
+    b.appendChild(e('div','izoh',"<b>Kuzatiladigan do'stlar</b> — ismi (Telegram'dagidek), @username yoki telefon raqami, vergul bilan:"));
+    b.appendChild(kiritish((T.dostlar||[]).join(', '),'Masalan: Alisher, @dostim, +998901112233','tga_dostlar','Saqlash'));
+    const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','','Barcha shaxsiy xabarlar'));
+    t.appendChild(matnli('small','',"Yoqilsa — ro'yxatdan tashqari hammadan kelgan xabar haqida ham so'raydi (guruhlar emas)"));
+    r.appendChild(t); r.appendChild(almashtirgich(T.hammasi,'tga_hammasi')); b.appendChild(r);
+    b.appendChild(e('div','izoh',"🎤 \"Jarvis, kelgan xabarlarni o'qi\" — \"yo'q\" degan xabarlaringizni keyin o'qib beradi."));
+    const u=matnli('button','tugma ikkinchi','Akkauntni uzish'); u.style.marginTop='12px';
+    u.onclick=()=>{ if(confirm("Telegram akkaunt uzilsinmi? Kirish kaliti o'chiriladi.")) sozYoz('tga_chiqish',1); }; b.appendChild(u);
+  }
+  b.appendChild(nat); ich.appendChild(b);
+}
 function kameraBolimi(ich, K){
   if(!K) return;
   const b=bolim('📹','Uy kameralari (Hikvision)',"Kamera va kompyuter bitta router/Wi-Fi'da bo'lsin. <b>Tarmoqdan qidirish</b> tugmasi "+
@@ -633,10 +675,26 @@ async function sozlamalarniYukla(){
   b.appendChild(rq); ich.appendChild(b);
 
   b=bolim('🤖','Sun\'iy intellekt (Groq — bepul)','Kalit bo\'lsa, Jarvis har qanday savolga javob beradi va xabarlarni imlo xatosiz yozadi. '+
+    'Claude ulangan bo\'lsa ham, <b>rasmlar</b> shu bepul AI\'da ko\'riladi. '+
     'Kalitni <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> dan bepul oling.');
-  b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(S.ai.bor?'yashil':'kulrang'), S.ai.bor?'Ulangan':'Ulanmagan'));
+  b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(S.ai.ozimizniki?'yashil':'kulrang'), S.ai.ozimizniki?'Ulangan':'Ulanmagan'));
   b.appendChild(kiritish('', S.ai.ozimizniki?'•••• kalit saqlangan (almashtirish uchun yangisini qo\'ying)':'gsk_...','groq_kalit','Ulash','password'));
   ich.appendChild(b);
+
+  b=bolim('🧠','Claude (pullik — aqlliroq)','Ulansa: savollar, suhbat, buyruqlarni tushunish va Telegram xabarlarini tuzatish Claude\'ga boradi. '+
+    'Rasmlar — bepul Groq\'da, oddiy buyruqlar (ovoz, YouTube, eshik...) — AI\'siz, pul ketmaydi. '+
+    'Pul tugasa, bepul AI\'ga o\'zi o\'tadi. Kalit: <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>');
+  b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(S.ai.claude?(S.ai.claude_xato?'sariq':'yashil'):'kulrang'),
+    S.ai.claude?(S.ai.claude_xato?'Muammo':'Ulangan'):'Ulanmagan'));
+  if(S.ai.claude_xato) b.appendChild(matnli('div','izoh','⚠️ '+S.ai.claude_xato)).style.color='#ffd99a';
+  b.appendChild(kiritish('', S.ai.claude?'•••• kalit saqlangan (almashtirish uchun yangisini qo\'ying)':'sk-ant-...','claude_kalit','Ulash','password'));
+  if(S.ai.claude){ const mq=tanlovlar(Object.entries(S.ai.claude_modellar), S.ai.claude_model, 'claude_model'); mq.style.marginTop='12px';
+    b.appendChild(mq);
+    const o=matnli('button','tugma ikkinchi',"Claude'ni o'chirish"); o.style.marginTop='12px';
+    o.onclick=()=>{ if(confirm("Claude o'chirilsinmi? Faqat bepul AI qoladi.")) sozYoz('claude_kalit',''); }; b.appendChild(o); }
+  ich.appendChild(b);
+
+  telegramAkkauntBolimi(ich, S.tga);
 
   b=bolim('✈️','Telegram bot','Telefondan Telegram orqali boshqarish. Tokenni Telegram\'da @BotFather dan oling.');
   const tgh = !S.telegram.token ? ['kulrang','Ulanmagan'] : (S.telegram.egasi ? ['yashil','Ulangan'] : ['sariq','Kod kutilmoqda']);

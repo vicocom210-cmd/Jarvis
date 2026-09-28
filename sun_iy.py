@@ -5,7 +5,8 @@ Kalit bo'lsa ishlaydi, bo'lmasa — suhbat.py va Vikipediya yetarli.
 Qo'llab-quvvatlanadi (biri bo'lsa yetadi, ustuvorlik tartibida):
   GROQ_API_KEY      — Groq (bepul, tez, karta shart emas): https://console.groq.com
   GEMINI_API_KEY    — Google Gemini (bepul ta'rif): https://aistudio.google.com/apikey
-  ANTHROPIC_API_KEY — Claude (pullik)
+  ANTHROPIC_API_KEY — Claude (pullik; bo'lsa — savol va xabarlar birinchi navbatda shunga boradi,
+                      rasmlar esa baribir bepul Groq'da). Kutubxona: pip install anthropic
 
 Qo'shimcha kutubxona shart emas — urllib orqali ishlaydi.
 Suhbat xotirasi: oxirgi bir necha gap eslab qolinadi (ketma-ket savol berish mumkin).
@@ -88,23 +89,49 @@ def _gemini(savol, tizim, oldingi, harorat=0.7):
     return natija["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
+# Claude (pullik) — savollar, suhbat va xabarlarni tuzatish shu yerga boradi (kalit bo'lsa).
+# Rasmlar esa bepul Groq'da qoladi. Kalit yo'q, pul tugagan yoki xato bo'lsa — bepul Groq'ga o'tiladi.
+CLAUDE_MODELLAR = {"claude-sonnet-5": "Claude Sonnet 5 (tavsiya)", "claude-haiku-4-5": "Claude Haiku 4.5 (arzon)"}
+claude_xato = ""                 # oxirgi xato (masalan, hisobda pul tugagan) — chat sozlamalarida ko'rinadi
+_claude_mijoz = None
+
+
 def _claude(savol, tizim, oldingi, harorat=0.7):
+    global _claude_mijoz, claude_xato
+    import anthropic
+    kalit = os.environ["ANTHROPIC_API_KEY"].strip()
+    if _claude_mijoz is None or _claude_mijoz.api_key != kalit:
+        _claude_mijoz = anthropic.Anthropic(api_key=kalit, max_retries=1, timeout=40.0)
+    model = os.environ.get("JARVIS_CLAUDE_MODEL") or "claude-sonnet-5"
     xabarlar = [{"role": rol, "content": matn} for rol, matn in oldingi]
     xabarlar.append({"role": "user", "content": savol})
-    natija = _sorov(
-        "https://api.anthropic.com/v1/messages",
-        {"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
-         "system": tizim, "messages": xabarlar, "temperature": harorat},
-        {"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
-         "Content-Type": "application/json"})
-    return natija["content"][0]["text"].strip()
+    qoshimcha = {}
+    if not model.startswith("claude-haiku"):        # ovozli yordamchi — tez va arzon javob
+        qoshimcha["output_config"] = {"effort": "low"}
+    try:
+        natija = _claude_mijoz.messages.create(model=model, max_tokens=2048, system=tizim,
+                                               messages=xabarlar, **qoshimcha)
+    except anthropic.AuthenticationError:
+        claude_xato = "Claude kaliti noto'g'ri"
+        raise
+    except anthropic.BadRequestError as xato:
+        if "credit" in str(xato).lower() or "balance" in str(xato).lower():
+            claude_xato = "Claude hisobida pul tugagan — bepul Groq ishlatilyapti"
+        raise
+    if natija.stop_reason == "refusal":
+        raise RuntimeError("Claude bu so'rovga javob bermadi")
+    claude_xato = ""
+    return "".join(b.text for b in natija.content if b.type == "text").strip()
+
+
+# Tartib: avval Claude (kalit bo'lsa), keyin bepul Groq, keyin Gemini
+AI_TARTIBI = (("ANTHROPIC_API_KEY", _claude), ("GROQ_API_KEY", _groq), ("GEMINI_API_KEY", _gemini))
 
 
 def javob(savol, ism="xo'jayin", til="uz"):
     """Bepul/pullik AI bilan javob. Kalit bo'lmasa yoki xato bo'lsa — None."""
     tizim = TIZIM.format(ism=ism, til_nomi=TIL_NOMLARI.get(til, "o'zbek"))
-    for kalit, ishlovchi in (("GROQ_API_KEY", _groq), ("GEMINI_API_KEY", _gemini),
-                             ("ANTHROPIC_API_KEY", _claude)):
+    for kalit, ishlovchi in AI_TARTIBI:
         if not os.environ.get(kalit):
             continue
         try:
@@ -133,8 +160,7 @@ def tahrir(matn, til="uz"):
     """Xabarni imlo xatosiz va emoji bilan qaytaradi. AI bo'lmasa yoki xato bo'lsa — None.
     Suhbat tarixiga aralashmaydi."""
     tizim = TAHRIR_TIZIM.format(til_nomi=TIL_NOMLARI.get(til, "o'zbek"))
-    for kalit, ishlovchi in (("GROQ_API_KEY", _groq), ("GEMINI_API_KEY", _gemini),
-                             ("ANTHROPIC_API_KEY", _claude)):
+    for kalit, ishlovchi in AI_TARTIBI:
         if not os.environ.get(kalit):
             continue
         try:

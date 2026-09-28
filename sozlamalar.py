@@ -34,6 +34,8 @@ STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
             "telegram_token": "", "telegram_egasi": 0, "telefon_adres": "", "telefon_pin": "0000",
             "telefon_kanal": "", "shahar": "toshkent", "chat_avto": True,
             "groq_kalit": "", "mikrofon": "", "sezgirlik": 3,
+            "claude_kalit": "", "claude_model": "claude-sonnet-5",
+            "tga_api_id": "", "tga_api_hash": "", "tga_dostlar": [], "tga_hammasi": False,
             "kameralar": [], "kamera_kuzatuv": False, "kamera_ovoz": False,
             "yuz_eshik": None, "yuz_eshik_och": True}      # None — hali tanlanmagan (o'zi yoqiladi)
 
