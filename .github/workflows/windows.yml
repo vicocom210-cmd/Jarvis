@@ -27,7 +27,7 @@ jobs:
       - name: Kutubxonalarni o'rnatish
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pillow SpeechRecognition pyaudio edge-tts pygame pyautogui pyperclip paho-mqtt opencv-python uiautomation
+          pip install pyinstaller pillow SpeechRecognition pyaudio edge-tts pygame pyautogui pyperclip paho-mqtt opencv-python uiautomation pywebview
 
       - name: Shazam (musiqani aniqlash) — ixtiyoriy
         continue-on-error: true
@@ -43,6 +43,8 @@ jobs:
           --collect-data speech_recognition
           --collect-all uiautomation
           --collect-submodules shazamio
+          --collect-all webview
+          --hidden-import clr
           --hidden-import pyaudio
           jarvis.py
 
@@ -56,6 +58,19 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "EXE xato bilan tugadi: $($p.ExitCode)" }
           $hajm = [math]::Round((Get-Item dist\Jarvis.exe).Length / 1MB, 1)
           Write-Host "Jarvis.exe hajmi: $hajm MB"
+
+      - name: Chat oynasi (dastur sifatida) ochilishini sinash
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\Jarvis.exe" -ArgumentList "--chat","about:blank" -PassThru
+          Start-Sleep -Seconds 12
+          $log = Join-Path $env:APPDATA "Jarvis\jarvis.log"
+          if ($p.HasExited) {
+            if (Test-Path $log) { Get-Content $log -Tail 40 }
+            throw "Chat oynasi ochilmadi (kod: $($p.ExitCode))"
+          }
+          Write-Host "Chat oynasi ochildi va ishlab turibdi."
+          Stop-Process -Id $p.Id -Force
 
       - name: EXE'ni yuklab olish uchun saqlash
         uses: actions/upload-artifact@v4

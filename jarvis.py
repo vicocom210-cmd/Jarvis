@@ -20,7 +20,15 @@ if getattr(sys, "frozen", False) and sys.stdout is None:
     sys.stdout = sys.stderr = open(os.path.join(_log_papka, "jarvis.log"), "a",
                                    encoding="utf-8", buffering=1)
 
+# "Jarvis.exe --chat URL" — faqat chat oynasi (alohida jarayon). Og'ir qismlarni yuklamaymiz.
+if "--chat" in sys.argv:
+    import chat_oyna
+    _i = sys.argv.index("--chat")
+    chat_oyna.och(sys.argv[_i + 1] if len(sys.argv) > _i + 1 else chat_oyna.STANDART_URL)
+    sys.exit(0)
+
 import asyncio
+import atexit
 import audioop
 import datetime
 import difflib
@@ -1008,10 +1016,21 @@ def eslatma_vaqti(ish, kechikdi=False):
     gapir(matn, uzilmas=True)
 
 
-def chat_och(sozlama=False):
-    """Chat oynasini alohida dastur oynasi kabi ochadi (Edge/Chrome "ilova" rejimi).
-    Brauzer topilmasa — oddiy brauzerda. sozlama=True — darhol sozlamalar bo'limida."""
-    url = f"http://127.0.0.1:{server.PORT}/chat" + ("?soz=1" if sozlama else "")
+chat_jarayon = None               # chat oynasi (alohida jarayon)
+
+
+def _chat_ilova_buyrugi(url):
+    """Chat oynasini haqiqiy dastur sifatida ochish buyrug'i (pywebview). Bo'lmasa — None."""
+    if getattr(sys, "frozen", False):                   # Jarvis.exe ichida hammasi bor
+        return [sys.executable, "--chat", url]
+    import importlib.util
+    if importlib.util.find_spec("webview") is None:     # pip install pywebview qilinmagan
+        return None
+    return [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_oyna.py"), url]
+
+
+def _brauzerda_och(url):
+    """Zaxira: pywebview ishlamasa — Edge/Chrome "ilova" rejimida, u ham bo'lmasa oddiy brauzerda."""
     if os.name == "nt":
         yollar = [os.path.expandvars(p) for p in (
             r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
@@ -1027,6 +1046,66 @@ def chat_och(sozlama=False):
                 except OSError:
                     pass
     webbrowser.open(url)
+
+
+def chat_och(sozlama=False):
+    """Chat oynasini alohida dastur oynasi qilib ochadi (brauzer emas, internet shart emas).
+    sozlama=True — darhol sozlamalar bo'limida. Oyna ochiq bo'lsa — qayta ochiladi (oldinga chiqadi)."""
+    global chat_jarayon
+    url = f"http://127.0.0.1:{server.PORT}/chat" + ("?soz=1" if sozlama else "")
+    if chat_jarayon is not None and chat_jarayon.poll() is None:
+        try:
+            chat_jarayon.terminate()                    # eski oynani yopib, yangisini ochamiz
+        except OSError:
+            pass
+    buyruq = _chat_ilova_buyrugi(url)
+    if not buyruq:
+        print("(Chat oynasini dastur qilib ochish uchun: pip install pywebview)")
+        _brauzerda_och(url)
+        return
+    try:
+        chat_jarayon = subprocess.Popen(buyruq)
+    except OSError as xato:
+        print(f"(Chat oynasi ochilmadi: {xato})")
+        _brauzerda_och(url)
+        return
+
+    def tekshir(jarayon):                               # darhol yiqilsa (WebView2 yo'q) — zaxira
+        time.sleep(4)
+        if jarayon.poll() not in (None, 0):
+            print("(Chat oynasi ishlamadi — Microsoft Edge WebView2 kerak. Brauzerda ochyapman.)")
+            _brauzerda_och(url)
+    threading.Thread(target=tekshir, args=(chat_jarayon,), daemon=True).start()
+
+
+def chat_yop():
+    """Jarvis yopilganda chat oynasi ham yopiladi."""
+    if chat_jarayon is not None and chat_jarayon.poll() is None:
+        try:
+            chat_jarayon.terminate()
+        except OSError:
+            pass
+
+
+atexit.register(chat_yop)
+
+
+def internetni_kuzat():
+    """Internet bor-yo'qligini kuzatadi — chat oynasida ko'rinadi.
+    Internetsiz ham chat, dasturlar, fayllar ishlaydi; faqat ovoz tanish/gapirish va AI ishlamaydi."""
+    import socket
+    oldingi = None
+    while True:
+        try:
+            socket.create_connection(("8.8.8.8", 53), timeout=3).close()
+            bor_ = True
+        except OSError:
+            bor_ = False
+        server.internet_bor = bor_
+        if bor_ != oldingi and oldingi is not None:
+            print("🌐 Internet qaytdi." if bor_ else "⚠️ Internet yo'q — ovozli buyruqlar ishlamaydi, chatga yozing.")
+        oldingi = bor_
+        time.sleep(15)
 
 
 def chat_sozlamalari():
@@ -2131,6 +2210,7 @@ def miya():
     eslatmalar = qulayliklar.Eslatmalar(eslatma_vaqti)     # eski eslatmalar ham tiklanadi
     pin = str(SOZ.get("telefon_pin") or "0000")
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
+    threading.Thread(target=internetni_kuzat, daemon=True).start()
     if server.ishga_tushir(web_bajar, pin):
         print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
         print(f"💬 Chat va arxiv: http://127.0.0.1:{server.PORT}/chat")
@@ -2212,7 +2292,7 @@ if __name__ == "__main__":
         import speech_recognition
         import pyaudio                   # noqa: F401  — mikrofon
         flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
-        for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio"):
+        for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio", "webview", "clr"):
             try:
                 __import__(ixtiyoriy)
                 print(f"  + {ixtiyoriy}")

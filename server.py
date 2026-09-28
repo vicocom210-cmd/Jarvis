@@ -22,6 +22,7 @@ _chat_qabul = None          # (matn) -> None  — chat oynasidan yozilgan gap (j
 _holat_ol = None            # () -> "kutish"/"tinglash"/"o'ylash"/"gapirish"
 _sozlama_ol = None          # () -> dict  — chatdagi sozlamalar bo'limi uchun
 _sozlama_yoz = None         # (kalit, qiymat) -> (ok, xabar)
+internet_bor = True         # jarvis.py kuzatib turadi — chat oynasida ko'rsatiladi
 
 
 def chat_sozla(qabul, holat_ol, sozlama_ol=None, sozlama_yoz=None):
@@ -95,7 +96,8 @@ class _Handler(BaseHTTPRequestHandler):
             except ValueError:
                 oxirgi = 0
             self._javob(200, {"ok": True, "yozuvlar": arxiv.keyin(oxirgi),
-                              "holat": _holat_ol() if _holat_ol else "kutish"})
+                              "holat": _holat_ol() if _holat_ol else "kutish",
+                              "internet": internet_bor})
         else:
             self._javob(404, {"ok": False})
 

@@ -162,6 +162,8 @@
     <h1 id="sarlavha">Bugungi suhbat</h1>
     <div class="holat"><div class="nuqta" id="nuqta"></div><span id="holatMatn">Tayyor</span></div>
   </div>
+  <div class="banner" id="internetYoq" style="background:#3a2a12;color:#ffd99a">
+    <span>📡 Internet yo'q — chat, dasturlar va fayllar ishlaydi; ovozli buyruqlar va AI internet qaytgach ishlaydi.</span></div>
   <div class="banner" id="banner"><span id="bannerMatn"></span><button onclick="bugungaQayt()">Bugunga qaytish</button></div>
   <div id="oqim"><div class="ichki" id="ichki"></div></div>
   <div id="sozlamalar"><div class="ichki" id="sozIchki"></div></div>
@@ -289,6 +291,7 @@ async function jonli(){
   try{
     const d = await ol('/api/yangi?keyin='+oxirgiId);
     const [h,j] = HOLATLAR[d.holat] || HOLATLAR.kutish;
+    document.getElementById('internetYoq').style.display = d.internet===false ? 'flex' : 'none';
     document.getElementById('holatMatn').textContent=h;
     document.getElementById('nuqta').classList.toggle('jonli', j);
     if(d.yozuvlar.length){
