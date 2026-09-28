@@ -125,6 +125,18 @@
     background:rgba(255,60,60,.85);color:#fff}
   .kam-tugma{padding:12px;border-radius:14px;border:1px solid var(--chegara);background:rgba(10,17,32,.7);color:var(--matn);
     font-size:14px;font-weight:700;text-align:left}
+  .kam-karta .sozla{position:absolute;right:6px;bottom:6px;width:34px;height:34px;border-radius:50%;border:1px solid var(--chegara);
+    background:rgba(0,0,0,.6);color:#fff;font-size:15px}
+  .qosh-karta{border-radius:20px;padding:16px;background:rgba(10,17,32,.8);border:1px solid var(--chegara);
+    display:flex;flex-direction:column;gap:10px}
+  .qosh-karta h3{font-size:16.5px}
+  .qosh-karta input{width:100%;padding:13px 14px;border-radius:13px;border:1px solid var(--chegara);background:rgba(4,8,18,.7);
+    color:var(--matn);font-size:15px;outline:none}
+  .qosh-karta input:focus{border-color:var(--yorqin)}
+  .ikki{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .topilgan{padding:11px 13px;border-radius:13px;border:1px dashed var(--chegara);font-size:13.5px;line-height:1.4}
+  .topilgan b{color:var(--yorqin)}
+  .qizil{color:#ffb3b3}
   .jonli{position:fixed;inset:0;z-index:8;background:#02040a;display:flex;flex-direction:column}
   .jonli-bosh{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;font-weight:800}
   .jonli-bosh button{width:40px;height:40px;border-radius:50%;border:1px solid var(--chegara);background:rgba(20,30,52,.8);
@@ -152,7 +164,7 @@
 <body>
 <div class="aura"></div>
 <div class="qatlam">
-  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.2</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
+  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.3</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
   <div class="tablar2">
     <div class="tab2 faol" id="tabBuyruq" onclick="bolimTanla('buyruq')">💬 Buyruqlar</div>
     <div class="tab2" id="tabKamera" onclick="bolimTanla('kamera')">📹 Kamera</div>
@@ -184,7 +196,27 @@
       <div class="natija" id="eshikNatija"></div>
     </div>
     <div class="kam-grid" id="kamRoyxat"></div>
-    <button class="kam-tugma" onclick="kameraYukla()">↻ Yangilash</button>
+    <div class="ikki">
+      <button class="kam-tugma" onclick="kameraYukla()">↻ Yangilash</button>
+      <button class="kam-tugma" id="qoshOchBtn" onclick="qoshOch()">➕ Kamera qo'shish</button>
+    </div>
+    <!-- Kamera qo'shish / o'zgartirish -->
+    <div class="qosh-karta yashir" id="qoshKarta">
+      <h3 id="qoshSarl">➕ Yangi kamera</h3>
+      <button class="kam-tugma" onclick="tarmoqQidir()">🔍 Tarmoqdan qidirish</button>
+      <div id="topilganlar" style="display:flex;flex-direction:column;gap:8px"></div>
+      <input id="kq-nom" placeholder="Nomi (masalan: Hovli)">
+      <input id="kq-ip" placeholder="IP: 192.168.100.201" inputmode="decimal">
+      <div class="ikki"><input id="kq-login" placeholder="Login" value="admin"><input id="kq-kanal" placeholder="Kanal" value="1" inputmode="numeric"></div>
+      <input id="kq-parol" type="password" placeholder="Kamera paroli">
+      <div class="kam-izoh" id="kq-izoh">Parol faqat uy Wi-Fi orqali kompyuterga boradi, internetdan o'tmaydi. Kamera kompyuterdagi Jarvis'da ham paydo bo'ladi.</div>
+      <div class="katta-tugmalar">
+        <button class="katta-tugma" id="kqSaqla" onclick="kameraSaqla()">💾 Saqlash va sinash</button>
+        <button class="katta-tugma ikkinchi" onclick="qoshYop()">Bekor qilish</button>
+      </div>
+      <button class="kam-tugma qizil yashir" id="kqOchir" onclick="kameraOchir()">🗑 Bu kamerani o'chirish</button>
+      <div class="natija" id="kqNatija"></div>
+    </div>
   </div>
 </div>
 
@@ -229,7 +261,7 @@
       <div class="izoh" id="s-pin-iz">PIN kod — kompyuterdagi Jarvis chat sozlamalaridagi PIN. Eshikni ochish uchun kamida 6 raqam bo'lishi kerak.</div>
     </div>
     <button class="knop" id="s-saqla" onclick="sozlamaSaqla()">Saqlash</button>
-    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.2</div>
+    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.3</div>
   </div>
 </div>
 
@@ -458,6 +490,8 @@ async function kameraYukla(){
     if(uyda){
       const c=el('div','kam-karta'); const im=el('img'); c.appendChild(im); c.appendChild(el('span','nom',(k.eshik?'🚪 ':'📹 ')+k.nom));
       c.onclick=()=>jonliOch(k.nom); royxat.appendChild(c);
+      if(k.ozgartirsa!==false){ const sz=el('button','sozla','✏️'); sz.title="O'zgartirish";
+        sz.onclick=(ev)=>{ ev.stopPropagation(); qoshOch(k); }; c.appendChild(sz); }
       telSorov('rasm',{nom:k.nom,eni:480}).then(r=>{ if(r.ok) im.src='data:image/jpeg;base64,'+r.rasm; }).catch(()=>{});
     } else {
       const b=el('button','kam-tugma',(k.eshik?'🚪 ':'📹 ')+k.nom+' — Telegram\'ga rasm');
@@ -466,6 +500,55 @@ async function kameraYukla(){
     }
   }
 }
+// ---- Kamera qo'shish / o'zgartirish (faqat uy Wi-Fi'da: parol ochiq bulutdan o'tmasin) ----
+let tahrirNom=null;
+function $(id){ return document.getElementById(id); }
+function qoshOch(k){
+  if(!uyda){ const h=$('kamHolat'); h.className='kam-izoh ogoh';
+    h.textContent="⚠ Kamera qo'shish faqat uy Wi-Fi'da ishlaydi (kamera paroli internetdan o'tmasin)."; return; }
+  tahrirNom=k?k.nom:null;
+  $('qoshSarl').textContent=k?('✏️ '+k.nom):'➕ Yangi kamera';
+  $('kq-nom').value=k?k.nom:''; $('kq-nom').disabled=!!k;
+  $('kq-ip').value=k?(k.ip||''):''; $('kq-login').value=k?(k.login||'admin'):'admin';
+  $('kq-kanal').value=k?String(k.kanal||'1').replace(/01$/,'')||'1':'1'; $('kq-parol').value='';
+  $('kq-parol').placeholder=k?"Yangi parol (bo'sh qoldirsangiz — eskisi qoladi)":'Kamera paroli';
+  $('kqOchir').classList.toggle('yashir', !k); $('kqNatija').innerHTML=''; $('topilganlar').innerHTML='';
+  $('qoshKarta').classList.remove('yashir'); $('qoshOchBtn').classList.add('yashir');
+  $('qoshKarta').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function qoshYop(){ $('qoshKarta').classList.add('yashir'); $('qoshOchBtn').classList.remove('yashir'); tahrirNom=null; }
+function kqNatija(matn, xato, rasm, tafsilot){ const n=$('kqNatija'); n.innerHTML='';
+  const t=el('div',xato?'qizil':'',matn); n.appendChild(t);
+  if(tafsilot&&tafsilot.length){ const d=el('div','kam-izoh','🔎 '+tafsilot.join('\n')); d.style.whiteSpace='pre-line'; d.style.marginTop='8px'; n.appendChild(d); }
+  if(rasm){ const i=el('img'); i.src='data:image/jpeg;base64,'+rasm; n.appendChild(i); } }
+async function tarmoqQidir(){ const t=$('topilganlar'); t.innerHTML=''; t.appendChild(el('div','kam-izoh','⏳ Qidiryapman (3 soniya)...'));
+  let d; try{ d=await telSorov('qidir',{},12); }catch(e){ d={ok:false,xato:"Kompyuterga ulanib bo'lmadi"}; }
+  t.innerHTML='';
+  if(!d.ok){ t.appendChild(el('div','kam-izoh qizil','⚠ '+(d.xato||d.xabar))); return; }
+  if(d.xabar && d.xabar.indexOf('⚠')>=0) t.appendChild(el('div','kam-izoh ogoh',d.xabar));
+  for(const q of d.topilgan||[]){ const b=el('div','topilgan');
+    b.innerHTML='<b></b><br><span></span>'; b.querySelector('b').textContent='📷 '+q.ip+(q.toqnashuv?'  ⚠️ IP to\'qnashuvi':'');
+    b.querySelector('span').textContent=(q.tur||'Hikvision')+' · '+(q.seriya||'')+(q.faol?'':' · faollashtirilmagan');
+    b.onclick=()=>{ $('kq-ip').value=q.ip; if(!$('kq-nom').value) $('kq-nom').value=/KV|KD|intercom/i.test(q.tur||'')?'Eshik':'';
+      $('kq-parol').focus(); };
+    t.appendChild(b); } }
+async function kameraSaqla(){
+  const q={nom:tahrirNom||$('kq-nom').value.trim(), ip:$('kq-ip').value.trim(), login:$('kq-login').value.trim()||'admin',
+           parol:$('kq-parol').value, kanal:$('kq-kanal').value.trim()||'1'};
+  if(!q.ip){ kqNatija("IP manzilni kiriting (yoki '🔍 Tarmoqdan qidirish'ni bosing)", true); return; }
+  if(!tahrirNom && !q.parol){ kqNatija('Kamera parolini kiriting', true); return; }
+  const b=$('kqSaqla'); b.disabled=true; kqNatija('⏳ Saqlayapman va kameraga ulanyapman...');
+  let d; try{ d=await telSorov('qosh',q,40); }catch(e){ d={ok:false,xato:"Kompyuterga ulanib bo'lmadi"}; }
+  b.disabled=false;
+  kqNatija(d.xabar||d.xato, !d.ok, d.rasm, d.tafsilot);
+  if(d.ok || d.saqlandi){ tahrirNom=d.nom||q.nom; $('kq-nom').value=tahrirNom; $('kq-nom').disabled=true; $('kq-parol').value='';
+    $('kqOchir').classList.remove('yashir'); $('qoshSarl').textContent='✏️ '+tahrirNom; kameraRoyxatYangila(); } }
+async function kameraOchir(){ if(!tahrirNom || !confirm(tahrirNom+" kamerasini o'chiraymi?")) return;
+  let d; try{ d=await telSorov('ochir',{nom:tahrirNom}); }catch(e){ d={ok:false,xato:"Kompyuterga ulanib bo'lmadi"}; }
+  if(d.ok){ qoshYop(); kameraYukla(); } else kqNatija(d.xato||d.xabar, true); }
+async function kameraRoyxatYangila(){ const ochiq=!$('qoshKarta').classList.contains('yashir');
+  await kameraYukla(); if(ochiq){ $('qoshKarta').classList.remove('yashir'); $('qoshOchBtn').classList.add('yashir'); } }
+
 function jonliOch(nom){ jonliNom=nom; document.getElementById('jonliNom').textContent=nom+' — jonli';
   document.getElementById('jonliParda').classList.remove('yashir'); jonliKadr(); }
 async function jonliKadr(){

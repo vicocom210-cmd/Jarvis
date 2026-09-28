@@ -1843,7 +1843,9 @@ def telefon_kamera_amali(amal, m):
     eshik = eshik_kamerasi()
     if amal == "kameralar":
         return {"ok": True, "eshik": eshik["nom"] if eshik else None,
-                "kameralar": [{"nom": k["nom"], "eshik": bool(eshik and k.get("ip") == eshik.get("ip"))}
+                "kameralar": [{"nom": k["nom"], "eshik": bool(eshik and k.get("ip") == eshik.get("ip")),
+                               "ip": k.get("ip", ""), "login": k.get("login", "admin"),
+                               "kanal": k.get("kanal", "1"), "ozgartirsa": not k.get("eshik")}   # parol yuborilmaydi
                               for k in kameralar()]}
     if amal == "rasm":
         k = next((x for x in kameralar() if x["nom"] == m.get("nom")), None)
@@ -1866,6 +1868,46 @@ def telefon_kamera_amali(amal, m):
             jpg = open(yol, "rb").read()
             natija["rasm"] = base64.b64encode(jpg).decode()
         return natija
+    if amal in ("qosh", "ochir", "sina", "qidir"):              # kamera qo'shish/o'zgartirish telefondan
+        if len(str(SOZ.get("telefon_pin") or "")) < 6:
+            return {"ok": False, "xato": "Xavfsizlik uchun PIN kamida 6 raqam bo'lsin. Kompyuterdagi chat "
+                                         "sozlamalarida PIN'ni almashtiring, keyin ilovada ham kiriting."}
+        if amal == "qidir":
+            ok, xabar, qosh = chat_sozlama_yoz("kamera_qidir", 1)
+            return {"ok": ok, "xabar": xabar, "topilgan": qosh.get("topilgan", [])}
+        if amal == "ochir":
+            ok, xabar = chat_sozlama_yoz("kamera_ochir", str(m.get("nom") or ""))[:2]
+            return {"ok": ok, "xabar": xabar}
+        nom = str(m.get("nom") or "").strip()
+        if amal == "qosh":
+            q = {x: m.get(x) for x in ("nom", "ip", "login", "parol", "kanal", "http_port")}
+            ok, xabar = chat_sozlama_yoz("kamera_qosh", q)[:2]
+            if not ok:
+                return {"ok": False, "xato": xabar}
+            nom = (SOZ.get("kameralar") or [{}])[-1].get("nom", nom) if not nom else nom[:30]
+        natija = chat_sozlama_yoz("kamera_sina", nom)
+        javob = {"ok": natija[0], "xabar": natija[1], "nom": nom}
+        qosh = natija[2] if len(natija) > 2 else {}
+        if qosh.get("rasm"):
+            fayl = os.path.join(kamera.PAPKA, qosh["rasm"].replace("/", os.sep))
+            jpg = None
+            try:
+                import cv2
+                rasm = cv2.imread(fayl)
+                if rasm is not None and rasm.shape[1] > 720:
+                    rasm = cv2.resize(rasm, (720, int(rasm.shape[0] * 720 / rasm.shape[1])))
+                jpg = cv2.imencode(".jpg", rasm, [cv2.IMWRITE_JPEG_QUALITY, 72])[1].tobytes() if rasm is not None else None
+            except Exception:
+                jpg = open(fayl, "rb").read()
+            if jpg:
+                javob["rasm"] = base64.b64encode(jpg).decode()
+        if qosh.get("tafsilot"):
+            javob["tafsilot"] = qosh["tafsilot"]
+        if amal == "qosh":
+            javob["xabar"] = ("✅ Kamera qo'shildi va ishlayapti! Kompyuterda ham ko'rinadi." if javob["ok"] else
+                              "Kamera saqlandi, lekin " + javob["xabar"].replace("Ulanib bo'lmadi:", "ulanib bo'lmadi:", 1))
+            javob["saqlandi"] = True
+        return javob
     return {"ok": False, "xato": "Noma'lum amal"}
 
 
