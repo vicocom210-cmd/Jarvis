@@ -23,6 +23,7 @@ _holat_ol = None            # () -> "kutish"/"tinglash"/"o'ylash"/"gapirish"
 _sozlama_ol = None          # () -> dict  — chatdagi sozlamalar bo'limi uchun
 _sozlama_yoz = None         # (kalit, qiymat) -> (ok, xabar)
 internet_bor = True         # jarvis.py kuzatib turadi — chat oynasida ko'rsatiladi
+kamera_ol = None            # (nom) -> kamera sozlamasi  — jonli video uchun (jarvis.py beradi)
 
 
 def chat_sozla(qabul, holat_ol, sozlama_ol=None, sozlama_yoz=None):
@@ -84,6 +85,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(tana)
         elif yol.path == "/api/sozlamalar":
             self._javob(200, {"ok": True, **(_sozlama_ol() if _sozlama_ol else {})})
+        elif yol.path == "/api/jonli":
+            self._jonli(q.get("k", [""])[0])
         elif yol.path == "/api/rasm":
             # faqat kamera papkasidagi .jpg (boshqa fayllarni o'qib bo'lmasin)
             nom = os.path.basename(q.get("f", [""])[0])
@@ -115,6 +118,25 @@ class _Handler(BaseHTTPRequestHandler):
                               "internet": internet_bor})
         else:
             self._javob(404, {"ok": False})
+
+    def _jonli(self, nom):
+        """Kameraning jonli videosi (MJPEG) — chatda oddiy <img> sifatida ko'rinadi.
+        Oyna yopilsa (ulanish uzilsa) — kameraga ulanish ham yopiladi."""
+        import kamera
+        k = kamera_ol(nom) if kamera_ol else None
+        if not k:
+            self._javob(404, {"ok": False, "xato": "kamera topilmadi"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=kadr")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        try:
+            for jpg in kamera.jonli_kadrlar(k, fps=10):
+                self.wfile.write(b"--kadr\r\nContent-Type: image/jpeg\r\nContent-Length: " +
+                                 str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            pass                                        # oyna yopildi — ulanishni tugatamiz
 
     def do_POST(self):
         try:

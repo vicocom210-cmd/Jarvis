@@ -186,3 +186,180 @@ def harakat_ulushi(kadr, fon, cv2):
     niqob = cv2.dilate(niqob, None, iterations=2)
     cv2.accumulateWeighted(kulrang, fon, 0.05)
     return cv2.countNonZero(niqob) / niqob.size, fon
+
+
+# ---------- TARMOQDAN QIDIRISH (Hikvision SADP) ----------
+SADP_GURUH, SADP_PORT = "239.255.255.250", 37020
+
+
+def sadp_javobini_oqi(xml):
+    """SADP javobi (XML) -> {ip, seriya, tur, http_port, faol} yoki None."""
+    import re
+
+    def ol(teg):
+        m = re.search(rf"<{teg}>([^<]*)</{teg}>", xml)
+        return m.group(1).strip() if m else ""
+    if ol("Types").lower() == "inquiry" or not ol("IPv4Address"):
+        return None                                  # bu bizning o'z so'rovimiz
+    return {"ip": ol("IPv4Address"), "seriya": ol("DeviceSN"), "tur": ol("DeviceType") or ol("DeviceDescription"),
+            "http_port": int(ol("HttpPort") or 80), "faol": ol("Activated").lower() != "false",
+            "mac": ol("MAC")}
+
+
+def sadp_qidir(soniya=3.0):
+    """Shu tarmoqdagi Hikvision qurilmalarini topadi (IP'ni qo'lda qidirish shart emas)."""
+    import socket
+    import struct
+    import uuid
+    topilgan = {}
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("", SADP_PORT))
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                     struct.pack("4sl", socket.inet_aton(SADP_GURUH), socket.INADDR_ANY))
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        s.settimeout(0.5)
+        sorov = (f'<?xml version="1.0" encoding="utf-8"?><Probe><Uuid>{str(uuid.uuid4()).upper()}</Uuid>'
+                 "<Types>inquiry</Types></Probe>").encode()
+        tugash = time.time() + soniya
+        yuborildi = 0
+        while time.time() < tugash:
+            if yuborildi < 3:                        # UDP yo'qolishi mumkin — 3 marta so'raymiz
+                s.sendto(sorov, (SADP_GURUH, SADP_PORT))
+                yuborildi += 1
+            try:
+                malumot, _ = s.recvfrom(65535)
+            except socket.timeout:
+                continue
+            q = sadp_javobini_oqi(malumot.decode("utf-8", "ignore"))
+            if q:
+                topilgan[q["ip"]] = q
+    except OSError as xato:
+        print(f"(Kamera qidiruvi xatosi: {xato})")
+    finally:
+        s.close()
+    return list(topilgan.values())
+
+
+# ---------- JONLI VIDEO ----------
+def jonli_kadrlar(k, fps=8, yengil=True, ishlasin=lambda: True):
+    """Kameraning jonli videosi — JPG kadrlar ketma-ketligi (chatda MJPEG sifatida ko'rinadi).
+    RTSP ochilmasa — ISAPI rasmlaridan (sekundiga ~2 ta)."""
+    try:
+        import cv2
+        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+        video = cv2.VideoCapture(rtsp_manzil(k, yengil), cv2.CAP_FFMPEG)
+    except ImportError:
+        cv2, video = None, None
+    if video is not None and video.isOpened():
+        oraliq, oxirgi = 1.0 / fps, 0.0
+        try:
+            while ishlasin():
+                ok, kadr = video.read()
+                if not ok:
+                    break
+                if time.time() - oxirgi < oraliq:
+                    continue                             # oqimni o'qib turamiz, lekin kamroq yuboramiz
+                oxirgi = time.time()
+                ok, jpg = cv2.imencode(".jpg", kadr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                if ok:
+                    yield jpg.tobytes()
+        finally:
+            video.release()
+        return
+    if video is not None:
+        video.release()
+    while ishlasin():                                    # zaxira: ISAPI rasmlari
+        try:
+            jpg = _isapi_rasm(k, timeout=5)
+        except PermissionError:
+            return
+        if not jpg:
+            return
+        yield jpg
+        time.sleep(0.5)
+
+
+# ---------- ESHIKNI OCHISH ----------
+def _isapi_put(k, yol, xml, timeout=6):
+    port = int(k.get("http_port") or 80)
+    asos = f"http://{k['ip']}" + ("" if port == 80 else f":{port}")
+    parollar = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    parollar.add_password(None, asos, str(k.get("login") or "admin"), str(k.get("parol") or ""))
+    ochuvchi = urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(parollar),
+                                           urllib.request.HTTPBasicAuthHandler(parollar))
+    sorov = urllib.request.Request(asos + yol, data=xml.encode("utf-8"), method="PUT",
+                                   headers={"Content-Type": "application/xml"})
+    with ochuvchi.open(sorov, timeout=timeout) as javob:
+        return javob.status, javob.read().decode("utf-8", "ignore")
+
+
+def _eshik_domofon(k, raqam):
+    """Domofon / kirish nazorati (DS-KV, DS-K...): masofadan eshikni ochish."""
+    kod, tana = _isapi_put(k, f"/ISAPI/AccessControl/RemoteControl/door/{raqam}",
+                           "<RemoteControlDoor><cmd>open</cmd></RemoteControlDoor>")
+    return kod == 200 and ("<statusCode>1</statusCode>" in tana or "OK" in tana or not tana.strip())
+
+
+def _eshik_rele(k, raqam, soniya=3):
+    """Kameraning rele (alarm output) chiqishiga ulangan qulf: 'high' -> kutish -> 'low'."""
+    yol = f"/ISAPI/System/IO/outputs/{raqam}/trigger"
+    kod, _ = _isapi_put(k, yol, "<IOPortData><outputState>high</outputState></IOPortData>")
+    if kod != 200:
+        return False
+
+    def qaytar():
+        time.sleep(soniya)
+        try:
+            _isapi_put(k, yol, "<IOPortData><outputState>low</outputState></IOPortData>")
+        except OSError:
+            pass
+    threading.Thread(target=qaytar, daemon=True).start()
+    return True
+
+
+ESHIK_USULLARI = {"domofon": _eshik_domofon, "rele": _eshik_rele}
+
+
+def eshik_och(k):
+    """Eshikni ochadi. (ok, xabar, ishlagan_usul). Avval saqlangan usul, bo'lmasa ikkalasi sinaladi."""
+    raqam = int(k.get("eshik_raqami") or 1)
+    usullar = [k["eshik_usul"]] if k.get("eshik_usul") in ESHIK_USULLARI else ["domofon", "rele"]
+    oxirgi = "Eshikni ochish buyrug'i qabul qilinmadi"
+    for usul in usullar:
+        try:
+            if ESHIK_USULLARI[usul](k, raqam):
+                return True, "Eshik ochildi", usul
+        except urllib.error.HTTPError as xato:
+            oxirgi = "Login yoki parol noto'g'ri" if xato.code == 401 else f"Qurilma rad etdi (HTTP {xato.code})"
+        except OSError as xato:
+            oxirgi = f"Qurilmaga ulanib bo'lmadi ({xato})"
+    return False, oxirgi, None
+
+
+def kadrlar(k, fps=4, yengil=False, ishlasin=lambda: True):
+    """Yuz tanish uchun kadrlar (numpy rasmlar). Asosiy oqim — yuz aniqroq ko'rinadi."""
+    import cv2
+    import numpy as np
+    for jpg in jonli_kadrlar(k, fps=fps, yengil=yengil, ishlasin=ishlasin):
+        rasm = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+        if rasm is not None:
+            yield rasm
+
+
+def veb_kamera_kadrlari(soni=12, oraliq=0.4):
+    """Kompyuterning o'z kamerasidan bir necha kadr (yuzni eslab qolish uchun)."""
+    import cv2
+    video = cv2.VideoCapture(0, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(0)
+    olingan = []
+    try:
+        time.sleep(1.0)                                   # kamera yorug'likka moslashsin
+        for _ in range(soni):
+            ok, kadr = video.read()
+            if ok and kadr is not None:
+                olingan.append(kadr)
+            time.sleep(oraliq)
+    finally:
+        video.release()
+    return olingan

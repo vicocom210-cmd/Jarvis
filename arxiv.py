@@ -22,7 +22,7 @@ def _fayl(sana):
     return os.path.join(PAPKA, f"{sana}.jsonl")
 
 
-def yoz(kim, matn, manba="", rasm=None):
+def yoz(kim, matn, manba="", rasm=None, jonli=None):
     """kim: 'siz' yoki 'jarvis'. manba: ovoz, chat, telefon, telegram, yozuv.
     rasm — kamera rasmining to'liq yo'li (chatda ko'rinadi)."""
     global _oxirgi_id
@@ -34,6 +34,8 @@ def yoz(kim, matn, manba="", rasm=None):
         yozuv = {"id": _oxirgi_id, "vaqt": time.time(), "kim": kim, "matn": matn, "manba": manba}
         if rasm:
             yozuv["rasm"] = os.path.basename(rasm)
+        if jonli:
+            yozuv["jonli"] = jonli                   # chatda jonli video (kamera nomi)
         _songgi.append(yozuv)
         try:
             os.makedirs(PAPKA, exist_ok=True)

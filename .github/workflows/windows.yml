@@ -37,6 +37,15 @@ jobs:
       - name: Oyna sinovi (ustida turadimi, o'rtada chiqadimi)
         run: python sinov_oyna.py
 
+      - name: Yuz tanish modellarini yuklab olish (EXE ichiga)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force modellar | Out-Null
+          $asos = "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models"
+          Invoke-WebRequest "$asos/face_detection_yunet/face_detection_yunet_2023mar.onnx" -OutFile modellar\face_detection_yunet_2023mar.onnx
+          Invoke-WebRequest "$asos/face_recognition_sface/face_recognition_sface_2021dec.onnx" -OutFile modellar\face_recognition_sface_2021dec.onnx
+          Get-ChildItem modellar | Select-Object Name, Length
+
       - name: Belgi (ikonka) yasash
         run: python belgi_yasa.py
 
@@ -45,6 +54,7 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed --name Jarvis --icon jarvis.ico
           --add-data "chat.html;."
           --add-data "jarvis.png;."
+          --add-data "modellar;modellar"
           --collect-data speech_recognition
           --collect-all uiautomation
           --collect-submodules shazamio
