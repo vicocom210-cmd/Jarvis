@@ -437,7 +437,7 @@ function telegramAkkauntBolimi(ich, T){
     const kb=matnli('button','tugma','📨 Kod yuborish'); kb.style.marginTop='10px';
     kb.onclick=async()=>{ kb.disabled=true; nat.textContent='⏳ Telegram\'ga ulanyapman...'; nat.style.color='';
       const d=await sozSorov('tga_kod',{api_id:m.api_id.value,api_hash:m.api_hash.value,telefon:m.telefon.value}); kb.disabled=false; ayt(d);
-      if(d.ok) kq.style.display='grid'; };
+      if(d.ok){ kq.style.display='grid'; qy.style.display=''; } };
     b.appendChild(kb);
     const kq=e('div'); kq.style.cssText='display:'+(T.holat==='ulanmagan'?'none':'grid')+';grid-template-columns:1fr 1fr auto;gap:10px;margin-top:12px';
     const kod=e('input','maydon'); kod.placeholder='Telegram\'dan kelgan kod'; kod.inputMode='numeric';
@@ -446,6 +446,12 @@ function telegramAkkauntBolimi(ich, T){
     kir.onclick=async()=>{ kir.disabled=true; const d=await sozSorov('tga_kirish',{kod:kod.value,parol:par.value}); kir.disabled=false; ayt(d);
       if(d.ok) setTimeout(sozlamalarniYukla, 1500); };
     kq.appendChild(kod); kq.appendChild(par); kq.appendChild(kir); b.appendChild(kq);
+    const qy=matnli('button','tugma ikkinchi','📱 Kod kelmadi — SMS orqali qayta yuborish'); qy.style.marginTop='10px';
+    qy.style.display=T.holat==='ulanmagan'?'none':'';
+    qy.onclick=async()=>{ qy.disabled=true; nat.textContent='⏳ So\'rayapman...'; nat.style.color='';
+      const d=await sozSorov('tga_qayta',1); qy.disabled=false; ayt(d); };
+    b.appendChild(qy);
+    b.appendChild(e('div','izoh',"💡 Kod odatda <b>SMS'ga emas</b>, telefoningizdagi Telegram ilovasiga — <b>\"Telegram\"</b> nomli rasmiy chatga (ko'k ✓ belgili) keladi."));
     b.appendChild(e('div','izoh',"🔒 Kirish kaliti faqat shu kompyuterda saqlanadi. Kodni hech kimga aytmang — Jarvis ham uni faqat Telegram'ga yuboradi."));
   } else {
     b.appendChild(matnli('div','izoh','Ulangan akkaunt: '+(T.men||'')));

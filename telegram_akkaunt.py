@@ -18,6 +18,50 @@ import sozlamalar
 
 SESSIYA = os.path.join(sozlamalar.PAPKA, "telegram_akkaunt")
 
+KOD_TURLARI = {
+    "SentCodeTypeApp": "boshqa qurilmangizdagi Telegram ilovasiga — \"Telegram\" nomli rasmiy chatni oching (ko'k belgili)",
+    "SentCodeTypeSms": "SMS orqali telefoningizga",
+    "SentCodeTypeSmsWord": "SMS orqali (kod — so'z)",
+    "SentCodeTypeSmsPhrase": "SMS orqali (kod — ibora)",
+    "SentCodeTypeFirebaseSms": "SMS orqali telefoningizga",
+    "SentCodeTypeFragmentSms": "Fragment (fragment.com) orqali — raqamingiz Fragment raqami",
+    "SentCodeTypeCall": "qo'ng'iroq orqali — kodni ovozda aytishadi",
+    "SentCodeTypeFlashCall": "qo'ng'iroq orqali — kod qo'ng'iroq qilgan raqamning oxirgi raqamlari",
+    "SentCodeTypeMissedCall": "qo'ng'iroq orqali — kod qo'ng'iroq qilgan raqamning oxirgi raqamlari",
+    "SentCodeTypeEmailCode": "Telegram'ga bog'langan email pochtangizga",
+    "SentCodeTypeSetUpEmailRequired": "email kerak — avval Telegram ilovasida login email'ini sozlang",
+}
+
+
+def _qayerga(natija):
+    tur = type(getattr(natija, "type", None)).__name__
+    matn = KOD_TURLARI.get(tur, "Telegram'ga")
+    keyingi = type(getattr(natija, "next_type", None) or object()).__name__
+    if keyingi.startswith("CodeType"):              # next_type nomlari: CodeTypeSms, CodeTypeCall...
+        keyingi = "Sent" + keyingi
+    if keyingi in KOD_TURLARI and keyingi != tur:
+        matn += ". Kelmasa — 'SMS orqali qayta yuborish'ni bosing (" + KOD_TURLARI[keyingi].split(" —")[0] + ")"
+    return matn
+
+
+def xato_matni(xato):
+    """Telegram xatolarini tushunarli qilib aytadi."""
+    nom = type(xato).__name__
+    if nom == "FloodWaitError":
+        daqiqa = max(1, int(getattr(xato, "seconds", 60)) // 60)
+        return f"Telegram ko'p urinish uchun vaqtincha to'xtatdi — {daqiqa} daqiqadan keyin qayta urinib ko'ring"
+    return {
+        "ApiIdInvalidError": "api_id yoki api_hash noto'g'ri — my.telegram.org dan qayta ko'chiring",
+        "PhoneNumberInvalidError": "Telefon raqami noto'g'ri — +998901234567 ko'rinishida yozing",
+        "PhoneNumberBannedError": "Bu raqam Telegram'da bloklangan",
+        "PhoneCodeInvalidError": "Kod noto'g'ri — qaytadan yozing",
+        "PhoneCodeExpiredError": "Kodning muddati o'tgan — yangi kod so'rang",
+        "SendCodeUnavailableError": "Telegram hozir boshqa usulda kod yubora olmaydi — bir necha daqiqa kuting",
+        "PasswordHashInvalidError": "Ikki bosqichli parol noto'g'ri",
+        "ConnectionError": "Telegram serveriga ulanib bo'lmadi — internetni tekshiring",
+        "TimeoutError": "Telegram javob bermadi — internetni tekshiring va qayta urinib ko'ring",
+    }.get(nom, f"{nom}: {xato}")
+
 
 class Akkaunt:
     def __init__(self, xabar_keldi, holat_xabari=print):
@@ -77,10 +121,19 @@ class Akkaunt:
 
     # --- kirish (bir marta) ---
     def kod_yubor(self, telefon):
+        """Kod so'raydi. Kod QAYERGA ketganini qaytaradi (odatda SMS emas — Telegram ilovasiga)."""
         self.telefon = telefon.strip().replace(" ", "")
         natija = self._bajar(self.mijoz.send_code_request(self.telefon))
         self.kod_hash = natija.phone_code_hash
         self.holat = "kod_kutilmoqda"
+        return _qayerga(natija)
+
+    def qayta_yubor(self):
+        """Kodni boshqa usulda (odatda SMS) qayta yuborish."""
+        from telethon.tl.functions.auth import ResendCodeRequest
+        natija = self._bajar(self.mijoz(ResendCodeRequest(self.telefon, self.kod_hash)))
+        self.kod_hash = natija.phone_code_hash
+        return _qayerga(natija)
 
     def kirish(self, kod, parol=""):
         from telethon.errors import SessionPasswordNeededError

@@ -1147,7 +1147,8 @@ def tga_ishga_tushir():
         return tga.ishga_tushir(SOZ["tga_api_id"], SOZ["tga_api_hash"])
     except Exception as xato:
         tga.holat = "xato"
-        print(f"(Telegram akkauntga ulanib bo'lmadi: {xato})")
+        tga.oxirgi_xato = telegram_akkaunt.xato_matni(xato)
+        print(f"(Telegram akkauntga ulanib bo'lmadi: {type(xato).__name__}: {xato})")
         return None
 
 
@@ -1961,20 +1962,38 @@ def chat_sozlama_yoz(kalit, qiymat):
             return False, "Telefon raqamini to'liq yozing, masalan: +998901234567"
         sozlama_ozgartir("tga_api_id", api_id, ayt=False)
         sozlama_ozgartir("tga_api_hash", api_hash, ayt=False)
+        import telegram_akkaunt
         try:
             if tga_ishga_tushir() == "ulangan":
                 return True, f"Akkaunt allaqachon ulangan: {tga.men}"
-            tga.kod_yubor(telefon)
+            if not tga or not tga.mijoz:
+                return False, "Telegram'ga ulanib bo'lmadi: " + (getattr(tga, "oxirgi_xato", "") or
+                                                                 "internetni tekshiring (jarvis.log da batafsil)")
+            qayerga = tga.kod_yubor(telefon)
         except Exception as xato:
-            return False, f"Kod yuborilmadi: {xato}"
-        return True, "Telegram'ingizga kod keldi. Uni pastga yozing (kod hech kimga aytilmaydi)."
+            print(f"(Telegram kod xatosi: {type(xato).__name__}: {xato})")
+            return False, "Kod yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
+        print(f"(Telegram kodi yuborildi: {qayerga})")
+        return True, f"Kod yuborildi — {qayerga}. Kodni pastga yozing."
+    if kalit == "tga_qayta":                                     # kod kelmadi — SMS orqali
+        import telegram_akkaunt
+        if not tga or not tga.kod_hash:
+            return False, "Avval 'Kod yuborish'ni bosing."
+        try:
+            qayerga = tga.qayta_yubor()
+        except Exception as xato:
+            print(f"(Telegram qayta kod xatosi: {type(xato).__name__}: {xato})")
+            return False, "Qayta yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
+        return True, f"Kod qayta yuborildi — {qayerga}."
     if kalit == "tga_kirish" and isinstance(qiymat, dict):       # 2-qadam: kod (va 2 bosqichli parol)
         if not tga:
             return False, "Avval kod so'rang."
         try:
             natija = tga.kirish(str(qiymat.get("kod") or ""), str(qiymat.get("parol") or ""))
         except Exception as xato:
-            return False, f"Kirib bo'lmadi: {xato}"
+            import telegram_akkaunt
+            print(f"(Telegram kirish xatosi: {type(xato).__name__}: {xato})")
+            return False, "Kirib bo'lmadi: " + telegram_akkaunt.xato_matni(xato)
         if natija == "parol_kerak":
             return False, "Akkauntingizda ikki bosqichli parol bor — uni ham kiriting."
         return True, f"✅ Ulandi: {tga.men}. Endi kuzatiladigan do'stlarni yozing."
