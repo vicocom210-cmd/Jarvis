@@ -391,7 +391,9 @@ async function kameraSina(nom, joy){
     const d=await r.json(); joy.innerHTML=''; xabarcha(d.xabar, !d.ok);
     if(d.rasm){ const i=document.createElement('img'); i.className='kamera-rasm'; i.src='/api/rasm?f='+encodeURIComponent(d.rasm);
       i.onclick=()=>rasmKatta(i.src); joy.appendChild(i); }
-    else joy.appendChild(matnli('div','izoh','⚠️ '+d.xabar)).style.color='#ffb3b3';
+    else { joy.appendChild(matnli('div','izoh','⚠️ '+d.xabar)).style.color='#ffb3b3';
+      if(d.tafsilot && d.tafsilot.length){ const t=e('div','izoh'); t.style.cssText='white-space:pre-line;margin-top:6px';
+        t.textContent='🔎 Tekshiruv:\n'+d.tafsilot.join('\n'); joy.appendChild(t); } }
   }catch(e){ joy.innerHTML=''; xabarcha("Jarvis bilan bog'lanib bo'lmadi", true); }
 }
 function jonliKorsat(nom){

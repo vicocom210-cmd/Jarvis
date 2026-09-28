@@ -1645,7 +1645,7 @@ def chat_sozlama_yoz(kalit, qiymat):
         royxat = [k for k in SOZ.get("kameralar", []) if k.get("ip")]
         nom = str(qiymat.get("nom") or "").strip()[:30] or f"Kamera {len(royxat) + 1}"
         yangi = {"nom": nom, "ip": ip, "login": str(qiymat.get("login") or "admin").strip(),
-                 "parol": str(qiymat.get("parol") or ""), "kanal": str(qiymat.get("kanal") or "101").strip(),
+                 "parol": str(qiymat.get("parol") or "").strip(), "kanal": str(qiymat.get("kanal") or "101").strip(),
                  "http_port": int(qiymat.get("http_port") or 80), "rtsp_port": int(qiymat.get("rtsp_port") or 554)}
         eski = next((k for k in royxat if k["nom"] == nom), None)
         if eski and not yangi["parol"]:
@@ -1673,7 +1673,12 @@ def chat_sozlama_yoz(kalit, qiymat):
             return False, "Kamera topilmadi."
         yol, xato = kamera.rasm_ol(k)
         if not yol:
-            return False, f"Ulanib bo'lmadi: {xato}."
+            try:
+                tafsilot = kamera.tashxis(k)
+            except Exception as xato_:
+                tafsilot = [f"(tekshiruv xatosi: {xato_})"]
+            print(f"Kamera tekshiruvi ({k['nom']}, {k.get('ip')}):\n  " + "\n  ".join(tafsilot))
+            return False, f"Ulanib bo'lmadi: {xato}.", {"tafsilot": tafsilot}
         return True, f"✅ '{k['nom']}' ishlayapti!", {"rasm": kamera.nisbiy(yol)}
     if kalit == "eshik_saqla" and isinstance(qiymat, dict):
         ip = str(qiymat.get("ip", "")).strip().replace("http://", "").replace("https://", "").strip("/")
@@ -1682,7 +1687,7 @@ def chat_sozlama_yoz(kalit, qiymat):
         eski = SOZ.get("eshik") or {}
         eshik = {"nom": str(qiymat.get("nom") or "Eshik").strip()[:30], "ip": ip,
                  "login": str(qiymat.get("login") or "admin").strip(),
-                 "parol": str(qiymat.get("parol") or "") or (eski.get("parol", "") if eski.get("ip") == ip else ""),
+                 "parol": str(qiymat.get("parol") or "").strip() or (eski.get("parol", "") if eski.get("ip") == ip else ""),
                  "kanal": str(qiymat.get("kanal") or "1").strip(),
                  "http_port": int(qiymat.get("http_port") or 80),
                  "eshik_raqami": int(qiymat.get("eshik_raqami") or 1)}

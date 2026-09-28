@@ -88,6 +88,37 @@ def _bloklanganmi(tana):
     return max(1, round(int(son.group(1)) / 60)) if son else 30
 
 
+def _digest_imzo(chal, usul, yol, login, parol):
+    """RFC 7616 Digest (MD5 / SHA-256, qop=auth yoki qopsiz). 'Digest ...' qatori yoki None."""
+    import hashlib
+    import os as _os
+    alg = (chal.get("algorithm") or "MD5").upper()
+    xesh = {"MD5": hashlib.md5, "MD5-SESS": hashlib.md5,
+            "SHA-256": hashlib.sha256, "SHA-256-SESS": hashlib.sha256}.get(alg)
+    if not xesh or "nonce" not in chal:
+        return None
+    H = lambda x: xesh(x.encode("utf-8")).hexdigest()
+    realm, nonce = chal.get("realm", ""), chal["nonce"]
+    cnonce, nc = _os.urandom(8).hex(), "00000001"
+    ha1 = H(f"{login}:{realm}:{parol}")
+    if alg.endswith("-SESS"):
+        ha1 = H(f"{ha1}:{nonce}:{cnonce}")
+    ha2 = H(f"{usul}:{yol}")
+    qoplar = [q.strip() for q in chal.get("qop", "").split(",") if q.strip()]
+    if "auth" in qoplar:
+        javob = H(f"{ha1}:{nonce}:{nc}:{cnonce}:auth:{ha2}")
+        qism = f', qop=auth, nc={nc}, cnonce="{cnonce}"'
+    elif qoplar:
+        return None                                     # faqat auth-int — qo'llamaymiz
+    else:
+        javob, qism = H(f"{ha1}:{nonce}:{ha2}"), ""
+    satr = (f'Digest username="{login}", realm="{realm}", nonce="{nonce}", uri="{yol}", '
+            f'algorithm={chal.get("algorithm") or "MD5"}, response="{javob}"{qism}')
+    if chal.get("opaque"):
+        satr += f', opaque="{chal["opaque"]}"'
+    return satr
+
+
 def _isapi(k, yol, usul="GET", malumot=None, timeout=8):
     """Hikvision ISAPI so'rovi (Digest yoki Basic). (kod, baytlar). Parol bilan faqat BIR marta
     urinadi (urllib qayta-qayta urinib, kamerani bloklatib qo'ymasin) va xato javob matnini saqlaydi —
@@ -114,18 +145,21 @@ def _isapi(k, yol, usul="GET", malumot=None, timeout=8):
     kod, tana, sarl, sorov = yubor()
     if kod != 401:
         return kod, tana
-    chaqiriq = " ".join(sarl.get_all("WWW-Authenticate") or [])
+    chaqiriqlar = [c.strip() for c in (sarl.get_all("WWW-Authenticate") or [])]
     if _bloklanganmi(tana.decode("utf-8", "ignore")):
         return kod, tana
-    if re.search(r"\bdigest\b", chaqiriq, re.I):
-        qism = re.search(r"digest\s+(.*)", chaqiriq, re.I | re.S).group(1)
-        chal = urllib.request.parse_keqv_list(filter(None, urllib.request.parse_http_list(qism)))
-        parollar = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-        parollar.add_password(None, asos, login, parol)
-        imzo = urllib.request.HTTPDigestAuthHandler(parollar).get_authorization(sorov, chal)
+    digestlar = [c[6:].strip() for c in chaqiriqlar if c[:6].lower() == "digest"]
+    if digestlar:
+        # Bir nechta Digest bo'lsa (yangi proshivka: SHA-256 va MD5) — biz bilgan birinchisini olamiz
+        imzo = None
+        for c in digestlar:
+            chal = urllib.request.parse_keqv_list(filter(None, urllib.request.parse_http_list(c)))
+            imzo = _digest_imzo(chal, usul, yol, login, parol)
+            if imzo:
+                break
         if not imzo:
             return kod, tana
-        kod, tana, _, _ = yubor("Digest " + imzo)
+        kod, tana, _, _ = yubor(imzo)
     else:
         import base64
         kod, tana, _, _ = yubor("Basic " + base64.b64encode(f"{login}:{parol}".encode()).decode())
@@ -157,6 +191,52 @@ def _isapi_rasm(k, timeout=8):
     if rad:
         raise PermissionError(rad)
     return None
+
+
+def tashxis(k):
+    """Kamera nega ulanmayapti — bosqichma-bosqich tekshiradi (parol bilan faqat BIR urinish).
+    Odam tushunadigan qatorlar ro'yxati."""
+    import socket
+    qatorlar = []
+    port = int(k.get("http_port") or 80)
+    for nom, p in (("HTTP", port), ("RTSP", int(k.get("rtsp_port") or 554))):
+        try:
+            socket.create_connection((k["ip"], p), timeout=3).close()
+            qatorlar.append(f"✅ {nom} port {p} ochiq")
+        except OSError:
+            qatorlar.append(f"❌ {nom} port {p} yopiq — IP yoki port noto'g'ri, yoki kamera o'chiq")
+    login = str(k.get("login") or "admin").strip()
+    parol = str(k.get("parol") or "")
+    qatorlar.append(f"ℹ️ Login: «{login}», parol uzunligi: {len(parol)} belgi"
+                    + (" ⚠️ boshida/oxirida bo'sh joy bor" if parol != parol.strip() else ""))
+    try:
+        sorov = urllib.request.Request(f"http://{k['ip']}" + ("" if port == 80 else f":{port}")
+                                       + "/ISAPI/System/deviceInfo")
+        urllib.request.urlopen(sorov, timeout=5).close()
+        qatorlar.append("ℹ️ Kamera parolsiz javob berdi")
+    except urllib.error.HTTPError as xato:
+        turlari = [c.split()[0] for c in (xato.headers.get_all("WWW-Authenticate") or []) if c.strip()]
+        qatorlar.append(f"ℹ️ Kamera so'raydigan kirish turi: {', '.join(turlari) or 'noma`lum'} (HTTP {xato.code})")
+    except OSError:
+        pass
+    try:
+        kod, tana = _isapi(k, "/ISAPI/System/deviceInfo", timeout=6)
+        matn = tana.decode("utf-8", "ignore")
+        if kod == 200:
+            model = re.search(r"<model>([^<]+)", matn)
+            qatorlar.append("✅ Login va parol TO'G'RI" + (f" (model: {model.group(1)})" if model else ""))
+        elif _bloklanganmi(matn):
+            qatorlar.append("🔒 Kamera BU KOMPYUTERni bloklagan (ko'p xato urinishlar). Kamerani tokdan "
+                            "chiqarib qayta ulang yoki 30 daqiqa kuting")
+        elif kod == 401:
+            qoldi = re.search(r"<retryLoginTime>\s*(\d+)", matn)
+            qatorlar.append("❌ Kamera login yoki parolni qabul qilmadi"
+                            + (f" — blokgacha {qoldi.group(1)} ta urinish qoldi" if qoldi else ""))
+        else:
+            qatorlar.append(f"⚠️ Kamera javobi: HTTP {kod}")
+    except (OSError, ValueError) as xato:
+        qatorlar.append(f"❌ So'rov bajarilmadi: {xato}")
+    return qatorlar
 
 
 PAROL_MASLAHAT = ("Bu kameraning paroli boshqasinikidan farq qilishi mumkin: brauzerda http://{ip} ni ochib, "
