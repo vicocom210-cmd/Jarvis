@@ -2089,7 +2089,8 @@ def telefon_kamera_amali(amal, m):
             return {"ok": False, "xato": "Xavfsizlik uchun PIN kamida 6 raqam bo'lsin. Kompyuterdagi chat "
                                          "sozlamalarida PIN'ni almashtiring, keyin ilovada ham kiriting."}
         if amal == "sinxron":       # kompyuter o'chiq bo'lsa ham telefon kameralarni ko'rsin (faqat uy Wi-Fi, PIN>=6)
-            return {"ok": True, "kameralar": [
+            return {"ok": True, "bulut_kalit": SOZ.get("bulut_kalit", ""),   # uydan tashqarida — shifrli kanal
+                    "kameralar": [
                 {"nom": k["nom"], "ip": k.get("ip", ""), "login": k.get("login", "admin"), "parol": k.get("parol", ""),
                  "kanal": k.get("kanal", "1"), "http_port": k.get("http_port", 80)} for k in kameralar()]}
         if amal == "qidir":
@@ -3282,7 +3283,18 @@ def miya():
         import uuid
         kanal = "jv-" + uuid.uuid4().hex[:12]
         sozlama_ozgartir("telefon_kanal", kanal, ayt=False)
-    bulut_holat = bulut.ishga_tushir(kanal, pin, web_bajar)
+    if not SOZ.get("bulut_kalit"):                  # uydan tashqarida kamera uchun shifrlash kaliti (bir marta)
+        sozlama_ozgartir("bulut_kalit", os.urandom(32).hex(), ayt=False)
+    try:
+        import importlib
+        importlib.import_module("cryptography.hazmat.primitives.ciphers.aead")
+        shifr_kalit = bytes.fromhex(SOZ["bulut_kalit"])
+    except BaseException as xato:                   # kutubxona yo'q yoki buzuq — Jarvis baribir ishlasin
+        if isinstance(xato, (KeyboardInterrupt, SystemExit)):
+            raise
+        shifr_kalit = None
+        print("(Uydan tashqarida kamera uchun: pip install cryptography)")
+    bulut_holat = bulut.ishga_tushir(kanal, pin, web_bajar, kalit=shifr_kalit, amal=telefon_kamera_amali)
     if bulut_holat == "ok":
         print(f"☁️ Internet orqali boshqarish — Kanal: {kanal}  (PIN: {pin})")
     elif bulut_holat == "yoq_kutubxona":
@@ -3362,7 +3374,7 @@ if __name__ == "__main__":
         import pyaudio                   # noqa: F401  — mikrofon
         flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
         for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio", "webview", "clr",
-                          "anthropic", "telethon", "telegram_akkaunt", "qrcode"):
+                          "anthropic", "telethon", "telegram_akkaunt", "qrcode", "cryptography"):
             try:
                 __import__(ixtiyoriy)
                 print(f"  + {ixtiyoriy}")

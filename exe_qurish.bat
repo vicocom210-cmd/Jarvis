@@ -3,7 +3,7 @@ REM Jarvis.exe ni o'z kompyuteringizda yasash (GitHub'dan yuklab olish ham mumki
 REM Ikki marta bosing. Tayyor fayl: dist\Jarvis.exe
 cd /d "%~dp0"
 set PY="C:\Program Files (x86)\Python311-32\python.exe"
-%PY% -m pip install pyinstaller pillow pywebview anthropic telethon qrcode
+%PY% -m pip install pyinstaller pillow pywebview anthropic telethon qrcode cryptography
 %PY% belgi_yasa.py
 if not exist modellar mkdir modellar
 curl -L -o modellar\face_detection_yunet_2023mar.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx

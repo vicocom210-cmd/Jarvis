@@ -142,6 +142,13 @@ open class MainActivity : android.app.Activity() {
             asosiy.post { finish() }
         }
 
+        // Uydan tashqarida: bulut xabarlarini AES-256-GCM bilan shifrlash (kalit uy Wi-Fi'da olinadi)
+        @JavascriptInterface
+        fun shifrla(kalitHex: String, matn: String): String = try { Shifr.shifrla(kalitHex, matn) } catch (e: Exception) { "" }
+
+        @JavascriptInterface
+        fun ochish(kalitHex: String, b64: String): String = try { Shifr.ochish(kalitHex, b64) } catch (e: Exception) { "" }
+
         // Kompyutersiz: kameradan to'g'ridan-to'g'ri rasm (uy Wi-Fi). Natija window.kameraJavob(id, json) ga
         @JavascriptInterface
         fun kameraRasm(id: Int, ip: String, port: Int, login: String, parol: String, kanal: String) {
