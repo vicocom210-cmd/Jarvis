@@ -201,54 +201,159 @@ def normallashtir(matn):
     return matn.lower().strip()
 
 
-def mikrofon_ishi():
-    """Alohida thread: doim tinglaydi va eshitganini kirish_navbat'ga qo'yadi."""
+# Mikrofon holati — chatdagi sozlamalarda ko'rinadi (nosozlikni topish oson bo'lsin)
+MIK_HOLAT = {"nomi": "", "ishlayapti": False, "xato": "", "chegara": 0, "daraja": 0,
+             "oxirgi": "", "vaqt": 0}
+mik_qayta = threading.Event()         # sozlama o'zgardi — mikrofonni qayta ochish
+# Sezgirlik (1..5) -> ovoz chegarasining yuqori chegarasi: qancha past bo'lsa, shuncha sezgir
+SEZGIRLIK_CHEGARA = {1: 420, 2: 320, 3: 230, 4: 160, 5: 100}
+PAST_CHEGARA = 70                     # bundan past — shovqinni ham gap deb oladi
+
+
+def mikrofonlar():
+    """Kompyuterdagi mikrofonlar (faqat ovoz yozadiganlari): [(indeks, nomi), ...]"""
+    royxat, korilgan = [], set()
     try:
-        mikrofon = sr.Microphone()
+        pa = sr.Microphone.get_pyaudio().PyAudio()
+        try:
+            for i in range(pa.get_device_count()):
+                info = pa.get_device_info_by_index(i)
+                nom = str(info.get("name", "")).strip()
+                if info.get("maxInputChannels", 0) > 0 and nom and nom not in korilgan \
+                        and not re.search(r"stereo mix|стерео микшер|what u hear|loopback", nom, re.I):
+                    korilgan.add(nom)
+                    royxat.append((i, nom))
+        finally:
+            pa.terminate()
     except Exception as xato:
-        print(f"(Mikrofon topilmadi: {xato}) — pastdagi maydonga yozib buyruq bering.")
-        return
-    tanib.pause_threshold = 0.7          # gap orasidagi kichik to'xtashda kesib qo'ymaydi
-    tanib.non_speaking_duration = 0.3
-    tanib.dynamic_energy_threshold = True    # atrof shovqiniga o'zi moslashadi
-    with mikrofon as mic:
-        tanib.adjust_for_ambient_noise(mic, duration=1)
-        tanib.energy_threshold = min(tanib.energy_threshold, 250)   # sezgirroq (past ovozni ham)
-        oxirgi_sozlash = time.time()
-        while True:
-            if time.time() - oxirgi_sozlash > 60:    # har daqiqada shovqinga qayta moslashadi
-                try:
-                    tanib.adjust_for_ambient_noise(mic, duration=0.3)
-                    tanib.energy_threshold = min(tanib.energy_threshold, 250)
-                except Exception:
-                    pass
-                oxirgi_sozlash = time.time()
-            # Shazam so'rasa — musiqani yozib beramiz
-            try:
-                soniya, javob = yozib_ber_navbat.get_nowait()
-                javob.put(tanib.record(mic, duration=soniya))
-                continue
-            except queue.Empty:
+        print(f"(Mikrofonlar ro'yxatini olib bo'lmadi: {xato})")
+    return royxat
+
+
+def _standart_mikrofon_nomi():
+    try:
+        pa = sr.Microphone.get_pyaudio().PyAudio()
+        try:
+            return str(pa.get_default_input_device_info().get("name", "Windows standarti"))
+        finally:
+            pa.terminate()
+    except Exception:
+        return "Windows standarti"
+
+
+def _mikrofon_top():
+    """Ishlaydigan mikrofonni topadi: avval tanlangani, keyin Windows standarti,
+    keyin boshqa mikrofonlar (avtomatik). (Microphone, nomi) yoki (None, xato)."""
+    royxat = mikrofonlar()
+    tanlangan = SOZ.get("mikrofon") or ""
+    sinovlar = [i for i, n in royxat if n == tanlangan]
+    sinovlar.append(None)                                   # Windows standarti
+    sinovlar += [i for i, n in royxat if i not in sinovlar]
+    oxirgi_xato = "Mikrofon topilmadi — ulanganini tekshiring"
+    for indeks in sinovlar:
+        try:
+            mik = sr.Microphone(device_index=indeks)
+            with mik:                                       # ochilishini sinab ko'ramiz
                 pass
-            if gapiryapti.is_set() and not uzish_mumkin:
-                time.sleep(0.1)
-                continue
-            boshlandi = time.time()
-            # Jarvis gapirayotganda ham tinglaymiz — shunda uning gapini bo'lish mumkin
-            gapirganda = gapiryapti.is_set()
+            nom = dict(royxat).get(indeks) if indeks is not None else _standart_mikrofon_nomi()
+            return mik, nom
+        except Exception as xato:
+            oxirgi_xato = str(xato) or oxirgi_xato
+    return None, oxirgi_xato
+
+
+def _chegarani_sozla():
+    """Ovoz chegarasini sezgirlik oralig'ida ushlaymiz (juda baland bo'lib ketib, gapni eshitmay qolmasin)."""
+    yuqori = SEZGIRLIK_CHEGARA.get(int(SOZ.get("sezgirlik", 3) or 3), 230)
+    tanib.energy_threshold = max(PAST_CHEGARA, min(tanib.energy_threshold, yuqori))
+    MIK_HOLAT["chegara"] = int(tanib.energy_threshold)
+
+
+def mikrofon_ishi():
+    """Alohida thread: doim tinglaydi va eshitganini kirish_navbat'ga qo'yadi.
+    Mikrofon ochilmasa yoki uzilib qolsa — o'zi qayta urinadi (avtomatik)."""
+    tanib.pause_threshold = 0.8          # gap orasidagi kichik to'xtashda kesib qo'ymaydi
+    tanib.non_speaking_duration = 0.4    # gap boshi/oxiridagi jimlikni ham oladi ("Jar-vis" kesilmasin)
+    tanib.dynamic_energy_threshold = True    # atrof shovqiniga o'zi moslashadi
+    xabar_berildi = False
+    while True:
+        mik, nomi = _mikrofon_top()
+        if mik is None:
+            MIK_HOLAT.update(ishlayapti=False, xato=nomi, nomi="")
+            if not xabar_berildi:
+                print(f"(Mikrofon ishlamayapti: {nomi}) — qayta urinaman. Hozircha chatga yozing.")
+                xabar_berildi = True
+            time.sleep(5)
+            continue
+        xabar_berildi = False
+        MIK_HOLAT.update(ishlayapti=True, xato="", nomi=nomi)
+        print(f"🎙️ Mikrofon: {nomi}")
+        mik_qayta.clear()
+        try:
+            with mik as mic:
+                _tinglash_sikli(mic)
+        except Exception as xato:
+            print(f"(Mikrofon uzildi: {xato}) — qayta ulanaman.")
+            MIK_HOLAT.update(ishlayapti=False, xato=str(xato))
+            time.sleep(2)
+
+
+def _tinglash_sikli(mic):
+    """Mikrofon ochiq ekan tinglaydi. Sozlama o'zgarsa yoki mikrofon buzilsa — qaytadi."""
+    tanib.adjust_for_ambient_noise(mic, duration=1)
+    _chegarani_sozla()
+    oxirgi_sozlash = oxirgi_gap = time.time()
+    xatolar = 0
+    while not mik_qayta.is_set():
+        if time.time() - oxirgi_sozlash > 60:    # har daqiqada shovqinga qayta moslashadi
             try:
-                audio = tanib.listen(mic, timeout=3, phrase_time_limit=5 if gapirganda else 9)
-            except sr.WaitTimeoutError:
-                continue
-            except Exception as xato:           # mikrofon uzilsa ham thread to'xtamasin
-                print(f"(Mikrofon xatosi: {xato})")
-                time.sleep(1)
-                continue
-            gapirganda = gapirganda or gapiryapti.is_set() or gap_tugadi > boshlandi
-            if gapirganda and not uzish_mumkin:
-                continue
-            threading.Thread(target=matnga_aylantir, args=(audio, gapirganda, hozirgi_gap),
-                             daemon=True).start()
+                tanib.adjust_for_ambient_noise(mic, duration=0.3)
+            except Exception:
+                pass
+            _chegarani_sozla()
+            oxirgi_sozlash = time.time()
+        # Uzoq vaqt hech narsa eshitilmasa — sezgirlikni asta oshiramiz (avtomatik)
+        if time.time() - oxirgi_gap > 45 and tanib.energy_threshold > PAST_CHEGARA * 1.3:
+            tanib.energy_threshold *= 0.85
+            _chegarani_sozla()
+            oxirgi_gap = time.time()
+        # Shazam so'rasa — musiqani yozib beramiz
+        try:
+            soniya, javob = yozib_ber_navbat.get_nowait()
+            javob.put(tanib.record(mic, duration=soniya))
+            continue
+        except queue.Empty:
+            pass
+        if gapiryapti.is_set() and not uzish_mumkin:
+            time.sleep(0.1)
+            continue
+        boshlandi = time.time()
+        # Jarvis gapirayotganda ham tinglaymiz — shunda uning gapini bo'lish mumkin
+        gapirganda = gapiryapti.is_set()
+        try:
+            audio = tanib.listen(mic, timeout=3, phrase_time_limit=5 if gapirganda else 9)
+            xatolar = 0
+        except sr.WaitTimeoutError:
+            _chegarani_sozla()
+            continue
+        except Exception as xato:           # mikrofon uzilsa ham thread to'xtamasin
+            xatolar += 1
+            print(f"(Mikrofon xatosi: {xato})")
+            if xatolar >= 3:
+                raise                        # qayta ochamiz (boshqa mikrofon bo'lishi mumkin)
+            time.sleep(1)
+            continue
+        _chegarani_sozla()
+        oxirgi_gap = time.time()
+        try:
+            MIK_HOLAT["daraja"] = int(audioop.rms(audio.frame_data, audio.sample_width))
+        except Exception:
+            pass
+        gapirganda = gapirganda or gapiryapti.is_set() or gap_tugadi > boshlandi
+        if gapirganda and not uzish_mumkin:
+            continue
+        threading.Thread(target=matnga_aylantir, args=(audio, gapirganda, hozirgi_gap),
+                         daemon=True).start()
 
 
 def aks_sadomi(eshitilgan, jarvis_gapi):
@@ -296,6 +401,7 @@ def matnga_aylantir(audio, gapirganda=False, jarvis_gapi=""):
             return
     except sr.RequestError:
         print("(Internet bilan muammo bor)")
+        MIK_HOLAT["xato"] = "Ovozni tanish uchun internet kerak"
         return
     if gapirganda:
         if aks_sadomi(matn, jarvis_gapi):
@@ -305,6 +411,7 @@ def matnga_aylantir(audio, gapirganda=False, jarvis_gapi=""):
         kirish_navbat.put(("uzish", normallashtir(matn), time.time()))
         return
     print(f"Eshitildi: {matn}")
+    MIK_HOLAT.update(oxirgi=matn, vaqt=time.time(), xato="")
     kirish_navbat.put(("ovoz", normallashtir(matn), time.time()))
 
 
@@ -323,6 +430,9 @@ def keyingi_gap(kutish):
             return None
         if manba == "sozlama":                  # oynadagi menyuda tanlandi
             sozlama_ozgartir(*matn)
+            continue
+        if manba == "chat_och":                 # sharni o'ng tugma bilan bosdi — sozlamalar
+            chat_och(sozlama=(matn == "soz"))
             continue
         if manba == "ovoz_sinov":               # menyuda "Eshitib ko'rish" bosildi
             gapir(f"Salom, {ISM}! Men shu ovozda gapiraman.",
@@ -1125,6 +1235,10 @@ def chat_sozlamalari():
         "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
         "avtostart": kompyuter.avtostart_bormi(),
         "papka": sozlamalar.PAPKA,
+        "mikrofon": {"holat": dict(MIK_HOLAT, oldin=int(time.time() - MIK_HOLAT["vaqt"])
+                                   if MIK_HOLAT["vaqt"] else None),
+                     "qurilmalar": [n for _, n in mikrofonlar()],
+                     "tanlangan": SOZ.get("mikrofon", ""), "sezgirlik": int(SOZ.get("sezgirlik", 3) or 3)},
     }
 
 
@@ -1151,6 +1265,17 @@ def chat_sozlama_yoz(kalit, qiymat):
     if kalit == "shahar" and qiymat in qulayliklar.SHAHARLAR:
         sozlama_ozgartir("shahar", qiymat, ayt=False)
         return True, f"Shahar: {qulayliklar.SHAHARLAR[qiymat][1]}."
+    if kalit == "mikrofon":
+        sozlama_ozgartir("mikrofon", str(qiymat or ""), ayt=False)
+        mik_qayta.set()                                   # mikrofon qayta ochiladi
+        return True, "Mikrofon almashtirilmoqda..."
+    if kalit == "sezgirlik" and str(qiymat) in ("1", "2", "3", "4", "5"):
+        sozlama_ozgartir("sezgirlik", int(qiymat), ayt=False)
+        _chegarani_sozla()
+        return True, "Sezgirlik o'zgardi."
+    if kalit == "mik_qayta":
+        mik_qayta.set()
+        return True, "Mikrofon qayta sozlanmoqda — 2 soniya jim turing."
     if kalit == "chat_avto":
         sozlama_ozgartir("chat_avto", bool(qiymat), ayt=False)
         return True, "Saqlandi."
@@ -1347,7 +1472,11 @@ KIRILL_LOTIN = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e"
                 "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f",
                 "х": "x", "ц": "s", "ч": "ch", "ш": "sh", "ы": "i", "э": "e", "ю": "yu",
                 "я": "ya", "ё": "yo", "ғ": "g'", "қ": "q", "ҳ": "h", "ў": "o'"}
-CHAQIRUV_SOZLAR = ("jarvis", "djarvis")
+CHAQIRUV_SOZLAR = ("jarvis", "djarvis", "jervis", "jarbis")
+# Google "Jarvis"ni ko'pincha kesib yozadi: "jar", "jarv"... Bular faqat GAP BOSHIDA
+# (yoki gap juda qisqa bo'lsa) chaqiruv hisoblanadi — "jarlik", "jarayon" kabi so'zlar emas.
+QISQA_CHAQIRUV = {"jar", "jarv", "jarvi", "djar", "jarr", "jaar", "jarw", "jarb", "jarvs", "жар",
+                  "джар", "жарв", "jars", "jarvy", "jarviz", "jarwis", "charvis", "garvis", "jervi"}
 
 
 def chaqiruv_sozimi(soz):
@@ -1373,6 +1502,10 @@ def chaqiruvni_ajrat(gap):
     'jarvis'               -> (True, '')
     'qo'shiq so'zlari'     -> (False, '')"""
     sozlar = gap.split()
+    if sozlar:
+        birinchi = "".join(KIRILL_LOTIN.get(h, h) for h in sozlar[0]).strip(".,!?;:-\"'")
+        if sozlar[0].strip(".,!?") in QISQA_CHAQIRUV or birinchi in QISQA_CHAQIRUV:
+            return True, " ".join(sozlar[1:]).strip(" ,.!?")     # "jar youtube och" -> "youtube och"
     for i, soz in enumerate(sozlar):
         if chaqiruv_sozimi(soz):
             keyin = " ".join(sozlar[i + 1:]).strip(" ,.!?")
@@ -2300,6 +2433,12 @@ if __name__ == "__main__":
                 print(f"  - {ixtiyoriy}: {xato}")
         print(f"Jarvis tayyor. Barcha modullar yuklandi. FLAC: {flac}")
         sys.exit(0)
+    if os.name == "nt":                  # faqat bitta Jarvis ishlasin (mikrofon va port to'qnashmasin)
+        import ctypes
+        _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Jarvis_yagona_nusxa")
+        if ctypes.windll.kernel32.GetLastError() == 183:          # ERROR_ALREADY_EXISTS
+            chat_och()                                            # ishlab turganining chati ochiladi
+            sys.exit(0)
     oyna = interfeys.Oyna(ui_navbat, kirish_navbat, SOZ)     # oyna — asosiy thread'da
     threading.Thread(target=mikrofon_ishi, daemon=True).start()
     threading.Thread(target=miya, daemon=True).start()

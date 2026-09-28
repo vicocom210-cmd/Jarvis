@@ -364,6 +364,39 @@ function mavzuQoy(s){                      // chat rangi Jarvis rang mavzusiga m
   const r = s && s.ranglar && s.ranglar[s.qiymatlar.rang]; if(!r) return;
   document.documentElement.style.setProperty('--yorqin', r.rang);
 }
+function mikChiz(M){
+  const joy=document.getElementById('mikBolim'); if(!joy || !M) return;
+  const H=M.holat; joy.innerHTML='';
+  const b=bolim('🎙️','Mikrofon',"Jarvis sizni eshitmasa: to'g'ri mikrofonni tanlang va sezgirlikni oshiring. "+
+    "Mikrofon uzilib qolsa, Jarvis o'zi qayta ulanadi.");
+  b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(H.ishlayapti?'yashil':'sariq'), H.ishlayapti?'Eshityapti':'Ishlamayapti'));
+  const q=e('div','qator'); const sel=e('select','maydon');
+  const avto=matnli('option','','🔄 Avtomatik (Windows standarti)'); avto.value=''; sel.appendChild(avto);
+  for(const n of M.qurilmalar){ const o=matnli('option','',n); o.value=n; if(n===M.tanlangan) o.selected=true; sel.appendChild(o); }
+  sel.onchange=()=>sozYoz('mikrofon',sel.value);
+  const qayta=matnli('button','tugma ikkinchi','↻ Qayta sozlash'); qayta.onclick=()=>sozYoz('mik_qayta',1);
+  q.appendChild(sel); q.appendChild(qayta); b.appendChild(q);
+  const sq=e('div','qator'); sq.style.marginTop='14px'; sq.appendChild(matnli('span','','Sezgirlik:'));
+  [['1','Past'],['2','O\'rtacha'],['3','Yaxshi'],['4','Yuqori'],['5','Juda yuqori']].forEach(([k,n])=>{
+    const t=matnli('div','tanlov'+(String(M.sezgirlik)===k?' faol':''),n); t.onclick=()=>sozYoz('sezgirlik',k); sq.appendChild(t); });
+  b.appendChild(sq);
+  const g=e('div'); g.style.cssText='display:grid;grid-template-columns:170px 1fr;gap:9px;margin-top:16px;align-items:center;font-size:14px';
+  g.appendChild(matnli('span','','Qurilma:')); g.appendChild(matnli('span','kod', H.nomi || '—'));
+  g.appendChild(matnli('span','','Oxirgi eshitilgan:'));
+  g.appendChild(matnli('span','kod', H.oxirgi ? '"'+H.oxirgi+'"  ('+(H.oldin<60?H.oldin+' soniya':Math.round(H.oldin/60)+' daqiqa')+' oldin)' : 'hali hech narsa'));
+  g.appendChild(matnli('span','','Ovoz / chegara:'));
+  const bar=e('div'); bar.style.cssText='height:10px;border-radius:6px;background:#0a1020;position:relative;overflow:hidden;border:1px solid var(--chegara)';
+  const max=Math.max(H.chegara*3, H.daraja, 1);
+  const tol=e('div'); tol.style.cssText='position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--yorqin),var(--binafsha));width:'+Math.min(100,H.daraja/max*100)+'%';
+  const chiziq=e('div'); chiziq.style.cssText='position:absolute;top:-2px;bottom:-2px;width:2px;background:#ffd36b;left:'+(H.chegara/max*100)+'%';
+  bar.appendChild(tol); bar.appendChild(chiziq); g.appendChild(bar);
+  b.appendChild(g);
+  if(H.xato) b.appendChild(matnli('div','izoh','⚠️ '+H.xato)).style.cssText='margin:12px 0 0;color:#ffb3b3';
+  joy.appendChild(b);
+}
+setInterval(async()=>{ if(korilayotgan!=='__sozlama__') return;
+  try{ const d=await ol('/api/sozlamalar'); mikChiz(d.mikrofon); }catch(e){} }, 3000);
+
 async function sozlamalarniYukla(){
   if(korilayotgan!=='__sozlama__') return;
   S = await ol('/api/sozlamalar'); mavzuQoy(S); const Q=S.qiymatlar; const ich=document.getElementById('sozIchki'); ich.innerHTML='';
@@ -379,6 +412,8 @@ async function sozlamalarniYukla(){
   const oq=tanlovlar([['ayol','👩 Ayol ovozi'],['erkak','👨 Erkak ovozi']],Q.ovoz,'ovoz');
   const sin=matnli('button','tugma ikkinchi','▶ Eshitib ko\'rish'); sin.onclick=()=>sozYoz('ovoz_sinov',Q.ovoz); oq.appendChild(sin);
   b.appendChild(oq); ich.appendChild(b);
+
+  const mb=e('div'); mb.id='mikBolim'; ich.appendChild(mb); mikChiz(S.mikrofon);
 
   b=bolim('🌐','Til','Jarvis shu tilda eshitadi va gapiradi.');
   b.appendChild(tanlovlar(Object.entries(S.tillar),Q.til,'til')); ich.appendChild(b);

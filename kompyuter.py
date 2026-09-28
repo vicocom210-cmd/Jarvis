@@ -524,9 +524,12 @@ def avtostart(yoqilsin=True):
     fayl = _avtostart_fayli()
     try:
         if not yoqilsin:
-            if os.path.exists(fayl):
-                os.remove(fayl)
+            for f in (fayl, _ornatuvchi_yorligi()):
+                if os.path.exists(f):
+                    os.remove(f)
             return True
+        if os.path.exists(_ornatuvchi_yorligi()):
+            return True                                # o'rnatuvchi allaqachon qo'ygan — ikki marta emas
         if getattr(sys, "frozen", False):              # Jarvis.exe
             buyruq = f'start "" "{sys.executable}"'
         else:                                          # python jarvis.py
@@ -543,5 +546,10 @@ def avtostart(yoqilsin=True):
         return False
 
 
+def _ornatuvchi_yorligi():
+    """Inno Setup o'rnatuvchisi 'Windows bilan ishga tushsin' tanlansa yaratadigan yorliq."""
+    return os.path.join(os.path.dirname(_avtostart_fayli()), "Jarvis.lnk")
+
+
 def avtostart_bormi():
-    return WINDOWS and os.path.exists(_avtostart_fayli())
+    return WINDOWS and (os.path.exists(_avtostart_fayli()) or os.path.exists(_ornatuvchi_yorligi()))

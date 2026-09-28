@@ -8,6 +8,7 @@ on:
     paths:
       - "*.py"
       - "chat.html"
+      - "jarvis_setup.iss"
       - ".github/workflows/windows.yml"
   workflow_dispatch:
 
@@ -40,6 +41,7 @@ jobs:
         run: >
           pyinstaller --noconfirm --onefile --windowed --name Jarvis --icon jarvis.ico
           --add-data "chat.html;."
+          --add-data "jarvis.png;."
           --collect-data speech_recognition
           --collect-all uiautomation
           --collect-submodules shazamio
@@ -71,6 +73,36 @@ jobs:
           }
           Write-Host "Chat oynasi ochildi va ishlab turibdi."
           Stop-Process -Id $p.Id -Force
+
+      - name: O'rnatuvchi (Jarvis-Setup.exe) yasash — Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Qp jarvis_setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup xatosi: $LASTEXITCODE" }
+          Get-Item Output\Jarvis-Setup.exe | Select-Object Name, @{n="MB";e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: O'rnatuvchini sinash (o'rnatib, keyin o'chirib ko'rish)
+        shell: pwsh
+        run: |
+          $p = Start-Process Output\Jarvis-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/CURRENTUSER" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "O'rnatish xatosi: $($p.ExitCode)" }
+          $exe = Join-Path $env:LOCALAPPDATA "Programs\Jarvis\Jarvis.exe"
+          if (-not (Test-Path $exe)) { throw "Jarvis.exe o'rnatilmadi: $exe" }
+          Write-Host "O'rnatildi: $exe"
+          $un = Join-Path $env:LOCALAPPDATA "Programs\Jarvis\unins000.exe"
+          $u = Start-Process $un -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES" -PassThru -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path $exe) { throw "O'chirilmadi" }
+          Write-Host "O'chirish ham ishladi."
+
+      - name: O'rnatuvchini yuklab olish uchun saqlash
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Setup
+          path: Output/Jarvis-Setup.exe
+          retention-days: 30
 
       - name: EXE'ni yuklab olish uchun saqlash
         uses: actions/upload-artifact@v4

@@ -19,6 +19,7 @@ Ular bir-biri bilan ikkita navbat (queue) orqali gaplashadi:
 """
 import math
 import os
+import sys
 import queue
 import random
 import time
@@ -31,6 +32,11 @@ NUQTALAR_SONI = 2200
 FPS = 40
 FON = (0, 0, 0)               # shu rang shaffof bo'ladi (Windows)
 PANEL = (10, 16, 28)
+
+# Tepadagi kichik shar (kutish rejimi) o'lchamlari
+MINI_R = 36
+MINI_ENI, MINI_BOYI = 110, 104
+MINI_YOZ_ENI, MINI_YOZ_BOYI = 440, 104 + 60
 
 # Holat: kattalik, aylanish tezligi, yorqinlik. Rang — tanlangan mavzudan olinadi.
 HOLATLAR = {
@@ -480,16 +486,18 @@ class Oyna:
         chap, tepa, ong, past = self.maydon
         koef = max(0.6, min(1.0, (past - tepa - 40) / 760))
         self.olchamlar = {"kichik": (340, 500), "katta": (int(600 * koef), int(760 * koef)),
-                          "sozlama": ekran_olchami()}
+                          "sozlama": ekran_olchami(),
+                          "mini": (MINI_ENI, MINI_BOYI),              # tepada o'rtada kichik shar
+                          "mini_yoz": (MINI_YOZ_ENI, MINI_YOZ_BOYI)}  # + ostida yozish joyi
         self.katta_koef = koef
         self.kichik_joy = (ong - 340 - 16, past - 500 - 16)
-        # Oyna kutishda ko'rinmaydi; birinchi marta chiqqanda burchakda emas, o'rtada bo'lsin
-        eni_k, boyi_k = self.olchamlar["katta"]
-        self.kerakli_joy = ((chap + ong - eni_k) // 2, (tepa + past - boyi_k) // 2)
+        # Kutishda — ekran tepasining o'rtasida kichik zarrachali shar
+        self.mini_yozish = False          # mini shar bosildi — ostida yozish joyi ochiq
+        self.kerakli_joy = self.rejim_joyi("mini")
         self.joy_tekshir_gacha = 0.0
         os.environ["SDL_VIDEO_WINDOW_POS"] = f"{self.kerakli_joy[0]},{self.kerakli_joy[1]}"
-        self.rejim = "kichik"
-        self.ekran = pygame.display.set_mode(self.olchamlar["kichik"], pygame.NOFRAME)
+        self.rejim = "mini"
+        self.ekran = pygame.display.set_mode(self.olchamlar["mini"], pygame.NOFRAME)
         pygame.display.set_caption("Jarvis")
         pygame.display.set_icon(self._ikonka())
         windows_sozla()
@@ -497,10 +505,12 @@ class Oyna:
 
         self.nuqtalar = fibonacci_shar(NUQTALAR_SONI)
         self.shar_nuqtalari = [(x, y, z) for x, y, z, _, _ in self.nuqtalar]
+        self.mini_nuqtalar = fibonacci_shar(420)     # tepadagi kichik shar — siyrak, mayda zarrachalar
         self.shakllar = shakllar_yasa(NUQTALAR_SONI)
         self.shakl_nomi = SHAKLLAR[0]
         self.shakl_m = 0.0                # 0 = shar, 1 = to'liq shakl
         self.rasmlar_to_plami = {"kichik": nuqta_rasmlari(1.0, tiniq=True),
+                                 "mini": nuqta_rasmlari(0.62, tiniq=True),
                                  "katta": nuqta_rasmlari(1.35, tiniq=True),
                                  "soz": nuqta_rasmlari(1.0), "soz_katta": nuqta_rasmlari(1.35)}
 
@@ -552,11 +562,15 @@ class Oyna:
         self.chizilgan = []               # shu kadrda chizilgan tugmalar id'lari
         self.sichqoncha = (0, 0)
         self.yashirin_gacha = 0           # shu vaqtgacha oyna yashirin
-        oyna_korinishi(False)             # kutish rejimida — yashirin (burchakda miltillamasin)
-        self.yashirin = True
+        self.yashirin = False
         self.joylash()
 
     def _ikonka(self):
+        asos = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        try:
+            return pygame.transform.smoothscale(pygame.image.load(os.path.join(asos, "jarvis.png")), (64, 64))
+        except (pygame.error, FileNotFoundError):
+            pass
         s = pygame.Surface((32, 32))
         s.fill((0, 0, 0))
         pygame.draw.circle(s, (30, 90, 200), (16, 16), 14)
@@ -587,6 +601,17 @@ class Oyna:
             self.oldindan_qatlam = pygame.Surface((self.oldindan_R * 3, self.oldindan_R * 3))
             self.oldindan_yadro = yadro_nuri(self.oldindan_R)
             return
+        if self.rejim in ("mini", "mini_yoz"):
+            self.R0 = MINI_R
+            self.markaz = (eni // 2, MINI_BOYI // 2)
+            self.rasmlar = self.rasmlar_to_plami["mini"]
+            self.yadro = yadro_nuri(self.R0)
+            self.shar_qatlami = pygame.Surface((eni, MINI_BOYI))
+            self.holat_y = MINI_BOYI
+            self.panel = pygame.Rect(0, 0, 0, 0)
+            self.yozuv_joyi = pygame.Rect(14, MINI_BOYI + 6, eni - 28, 46)
+            self.yopish_joyi = self.sozlama_joyi = pygame.Rect(-50, -50, 1, 1)
+            return
         katta = self.rejim == "katta"
         k = self.katta_koef if katta else 1.0
         self.R0 = int((175 if katta else 95) * k)
@@ -614,20 +639,28 @@ class Oyna:
         fon.blit(nur, (eni - int(boyi * 0.9), -int(boyi * 0.35)), special_flags=pygame.BLEND_ADD)
         return fon
 
+    def rejim_joyi(self, rejim):
+        """Har bir rejimda oyna qayerda turadi (ekrandagi chap-yuqori burchagi)."""
+        eni, boyi = self.olchamlar[rejim]
+        chap, tepa, ong, past = self.maydon
+        if rejim == "sozlama":
+            return (0, 0)
+        if rejim == "katta":
+            return ((chap + ong - eni) // 2, (tepa + past - boyi) // 2)      # ekran o'rtasi
+        if rejim in ("mini", "mini_yoz"):
+            return ((chap + ong - eni) // 2, tepa + 6)                      # tepada, o'rtada
+        return self.kichik_joy
+
     def rejimga_ot(self, rejim):
         if rejim == self.rejim:
             return
         if self.rejim == "kichik":
             self.kichik_joy = oyna_joyi() if os.name == "nt" else self.kichik_joy
+        if rejim == "katta":
+            self.mini_yozish = False             # katta Jarvis chiqdi — mini yozish joyi yopiladi
         self.rejim = rejim
         eni, boyi = self.olchamlar[rejim]
-        if rejim == "sozlama":
-            joy = (0, 0)
-        elif rejim == "katta":
-            chap, tepa, ong, past = self.maydon
-            joy = ((chap + ong - eni) // 2, (tepa + past - boyi) // 2)     # ekran o'rtasi
-        else:
-            joy = self.kichik_joy
+        joy = self.rejim_joyi(rejim)
         # pygame o'lcham o'zgarganda oynani SDL_VIDEO_WINDOW_POS joyiga qaytaradi —
         # shuning uchun avval yangi joyni aytamiz (aks holda burchakda qolib ketadi)
         os.environ["SDL_VIDEO_WINDOW_POS"] = f"{joy[0]},{joy[1]}"
@@ -701,7 +734,7 @@ class Oyna:
             if h.type == pygame.QUIT:
                 self.ishlayapti = False
             elif h.type == pygame.MOUSEBUTTONDOWN and h.button == 3 and self.rejim != "sozlama":
-                self.sozlamani_och()                     # o'ng tugma — sozlamalar
+                self.kirish_navbat.put(("chat_och", "soz", time.time()))   # o'ng tugma — sozlamalar
             elif h.type == pygame.MOUSEBUTTONDOWN and h.button == 1:
                 if self.rejim == "sozlama":
                     self.sozlamada_bosildi(h.pos)
@@ -712,7 +745,12 @@ class Oyna:
                 if (self.surish and not self.surildi and self.rejim != "sozlama"
                         and math.hypot(h.pos[0] - self.markaz[0], h.pos[1] - self.markaz[1])
                         < self.R0 * 1.5):
-                    self.kirish_navbat.put(("uygon", "", time.time()))
+                    if self.rejim in ("mini", "mini_yoz"):
+                        # tepadagi sharni bosdi — ostida yozish joyi ochiladi/yopiladi
+                        self.mini_yozish = not self.mini_yozish
+                        self.faol = "yozuv" if self.mini_yozish else None
+                    else:
+                        self.kirish_navbat.put(("uygon", "", time.time()))
                 self.surish = None
                 self.surildi = False
             elif h.type == pygame.MOUSEMOTION and self.surish:
@@ -726,6 +764,8 @@ class Oyna:
             elif h.type == pygame.KEYDOWN:
                 if h.key == pygame.K_ESCAPE and self.rejim == "sozlama" and self.faol not in ("ism", "token"):
                     self.sozlama_ochiq = False
+                elif h.key == pygame.K_ESCAPE and self.rejim == "mini_yoz":
+                    self.mini_yozish, self.faol = False, None    # yozish joyini yopamiz
                 elif self.faol:
                     self.tugma_bosildi(h)
 
@@ -825,13 +865,13 @@ class Oyna:
         if self.sozlama_ochiq or self.soz_t > 0.01:
             self.rejimga_ot("sozlama")
         elif self.holat != "kutish":
-            self.rejimga_ot("katta")
+            self.rejimga_ot("katta")                 # "Jarvis" — o'rtada katta
+        elif self.rejim in ("mini", "mini_yoz") or time.time() - self.kutish_boshlandi > 1.2:
+            self.rejimga_ot("mini_yoz" if self.mini_yozish else "mini")   # tepada kichik shar
 
-        # Kutish rejimida oyna umuman ko'rinmaydi (burchakda ham turmaydi).
-        # Faqat "Jarvis" deganda (holat != kutish) yoki sozlama ochilganda ko'rinadi,
-        # keyin buyruq bajarilib kutishga qaytgach — yana ekrandan yo'qoladi.
-        kerak_korinsin = (self.sozlama_ochiq or self.soz_t > 0.01 or self.holat != "kutish")
-        yashirin = (time.time() < self.yashirin_gacha) or (not kerak_korinsin)
+        # Oyna doim ko'rinadi (kutishda — tepada kichik shar). Faqat tugma bosish kabi
+        # ishlarda vaqtincha yashiriladi (yashirin_gacha).
+        yashirin = time.time() < self.yashirin_gacha
         if yashirin != self.yashirin:
             self.yashirin = yashirin
             oyna_korinishi(not yashirin)
@@ -874,8 +914,9 @@ class Oyna:
         self.daraja = yangi if yangi > self.daraja else aralashtir(self.daraja, yangi, min(1, dt * 8))
 
     # ----- shar -----
-    def zarrachalar(self, q, cx, cy, R, rasmlar, yadro, vaqt):
-        """Zarrachalarni q ga chizadi (kul rangda). Shar yoki shakl — shakl_m ga qarab."""
+    def zarrachalar(self, q, cx, cy, R, rasmlar, yadro, vaqt, nuqtalar=None):
+        """Zarrachalarni q ga chizadi (kul rangda). Shar yoki shakl — shakl_m ga qarab.
+        nuqtalar — kichik shar uchun alohida (siyrakroq) nuqtalar: aks holda bir tekis dog' bo'ladi."""
         ca, sa = math.cos(self.burchak), math.sin(self.burchak)
         egilish = 0.35
         ce, se = math.cos(egilish), math.sin(egilish)
@@ -883,11 +924,16 @@ class Oyna:
         nafas_t = vaqt * 1.6
         tolqin_t = vaqt * 9
         m = yumshoq(self.shakl_m)
-        maqsad = self.shakllar[self.shakl_nomi] if m > 0.001 else self.shar_nuqtalari
+        if nuqtalar is None:
+            nuqtalar = self.nuqtalar
+            maqsad = self.shakllar[self.shakl_nomi] if m > 0.001 else self.shar_nuqtalari
+        else:
+            m = 0.0                                  # kichik shar shaklga kirmaydi
+            maqsad = [(x, y, z) for x, y, z, _, _ in nuqtalar]
         yorqinlik = self.yorqinlik
         ro_yxat = []
         sin = math.sin
-        for (x, y, z, faza, uzoq), (tx, ty, tz) in zip(self.nuqtalar, maqsad):
+        for (x, y, z, faza, uzoq), (tx, ty, tz) in zip(nuqtalar, maqsad):
             if m > 0.001:
                 x += (tx - x) * m
                 y += (ty - y) * m
@@ -927,9 +973,12 @@ class Oyna:
         # katta bo'lib chiqish: 0.6 dan 1.0 gacha silliq kattalashadi
         ochilish = 1 - (1 - self.kirish) ** 3
         R = self.R0 * self.kattalik * (0.6 + 0.4 * ochilish)
-        self.zarrachalar(q, cx, cy, R, self.rasmlar, None, vaqt)     # ichki nursiz — to'q dog' bo'lmasin
-        # kul rangdagi rasmni holat rangiga bo'yaymiz
-        q.fill(tuple(int(c) for c in self.rang), special_flags=pygame.BLEND_MULT)
+        mini = self.rejim in ("mini", "mini_yoz")
+        self.zarrachalar(q, cx, cy, R, self.rasmlar, None, vaqt,     # ichki nursiz — to'q dog' bo'lmasin
+                         self.mini_nuqtalar if mini else None)
+        # kul rangdagi rasmni holat rangiga bo'yaymiz (kichik shar — biroz yorqinroq, ko'zga tashlansin)
+        rang = rang_aralashtir(self.rang, self.yorqin, 0.5) if mini else self.rang
+        q.fill(tuple(int(c) for c in rang), special_flags=pygame.BLEND_MULT)
         # Deyarli qora piksellarni butunlay qora (= shaffof) qilamiz: aks holda ish stolida
         # shar atrofida to'q dog' ko'rinadi. Nuqtalar tiniqroq bo'ladi.
         q.fill((22, 22, 22), special_flags=pygame.BLEND_SUB)
@@ -1041,6 +1090,11 @@ class Oyna:
     def matnlarni_chiz(self, dt=0.025):
         yorqin = self.yorqin
         sichqoncha = pygame.mouse.get_pos()
+        if self.rejim == "mini":
+            return                                   # faqat shar
+        if self.rejim == "mini_yoz":
+            self.yozish_joyi_chiz(sichqoncha, dt)    # shar + ostida yozish joyi
+            return
 
         # siz va Jarvis gaplari — ramkasiz, markazda, soyali
         maydon = self.panel
