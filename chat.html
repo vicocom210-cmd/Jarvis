@@ -728,7 +728,17 @@ async function sozlamalarniYukla(){
       "<b>\"Instagram statistikasi\"</b>.<br>🔑 <b>Kalitsiz ham ishlaydi:</b> Jarvis brauzerdagi Instagram'ni (siz kirgan akkaunt) o'zi ochib, videoni yuklaydi va tavsifni qo'yadi — "+
       "'Ulashish'ni siz bosasiz. Kalit (Meta token) bo'lsa — to'liq avtomatik, vaqtga qo'yish, izohlar va statistika ham ishlaydi. Parol hech qachon so'ralmaydi.");
     b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(S.ig.bor?'yashil':'kulrang'), S.ig.bor?('@'+S.ig.username):'Ulanmagan'));
-    { const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','',"To'liq avtomatik (brauzer rejimi)"));
+    { const r=e('div','sozq'); const t=e('div');
+      t.appendChild(matnli('b','',"🌙 Orqa fon rejimi (tavsiya)"));
+      t.appendChild(matnli('small','', S.ig.fon_kirgan
+        ? "✅ Kirilgan. Jarvis ko'rinmas brauzerda joylaydi — kompyuterdan bemalol foydalanasiz, vaqtga qo'yish ham ishlaydi."
+        : "Bir marta Instagram'ning o'z sahifasida kirasiz (parol Jarvis'da saqlanmaydi). Keyin joylash orqa fonda — ekran band bo'lmaydi."));
+      r.appendChild(t);
+      const tb=matnli('button', S.ig.fon_kirgan?'tugma ikkinchi':'tugma', S.ig.fon_kirgan?'Chiqish':"🔐 Instagram'ga kirish");
+      tb.onclick=()=>{ if(S.ig.fon_kirgan){ if(confirm("Orqa fon rejimidan chiqilsinmi?")) sozYoz('ig_brauzer_chiqish',1); }
+                       else sozYoz('ig_kirish',1); };
+      r.appendChild(tb); b.appendChild(r); }
+    { const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','',"To'liq avtomatik (ekran rejimi — zaxira)"));
       t.appendChild(matnli('small','',"Jarvis 'Ulashish'ni ham o'zi bosadi, vaqtga qo'ya oladi. Chrome'da Instagram'ga kirilgan bo'lsin; parol so'ralmaydi"));
       r.appendChild(t); r.appendChild(almashtirgich(S.ig.avto,'ig_avto_ulash')); b.appendChild(r); }
     if(S.ig.rejalar) b.appendChild(matnli('div','izoh','⏰ Rejadagi postlar: '+S.ig.rejalar+' ta (shu vaqtda kompyuter yoqiq bo\'lsin)'));

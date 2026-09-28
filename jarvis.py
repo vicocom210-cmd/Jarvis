@@ -1258,9 +1258,34 @@ def _ig_joyla_fonda(fayl, tavsif, rejadan=False):
         sozlama_ozgartir("ig_rejalar", [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl], ayt=False)
 
 
+def ig_fon_bormi():
+    """Orqa fon rejimi tayyormi: kutubxona bor va Instagram'ga bir marta kirilgan."""
+    try:
+        import instagram_brauzer
+        return instagram_brauzer.bormi() and bool(SOZ.get("ig_brauzer_kirgan"))
+    except Exception:
+        return False
+
+
+def _ig_fonda_joyla(fayl, tavsif):
+    """Ko'rinmas brauzerda joylaydi — ekran, sichqoncha va klaviatura band bo'lmaydi."""
+    import instagram_brauzer
+    try:
+        instagram_brauzer.joyla(fayl, tavsif, holat=lambda m: ui_navbat.put(("jarvis", "📸 " + m)))
+        gapir("✅ Instagramga joylandi!")
+    except Exception as xato:
+        if "kirilmagan" in str(xato):
+            sozlama_ozgartir("ig_brauzer_kirgan", False, ayt=False)
+        print(f"(Instagram orqa fon xatosi: {type(xato).__name__}: {xato})")
+        gapir(f"Instagramga joylab bo'lmadi: {xato}")
+
+
 def _ig_rejadan_brauzerda(fayl, tavsif):
     sozlama_ozgartir("ig_rejalar", [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl], ayt=False)
-    _ig_brauzerda_joyla(fayl, tavsif)
+    if ig_fon_bormi():
+        _ig_fonda_joyla(fayl, tavsif)
+    else:
+        _ig_brauzerda_joyla(fayl, tavsif)
 
 
 def ig_rejalarni_tikla():
@@ -1399,6 +1424,18 @@ def ig_joylash(b):
         gapir("Bekor qildim. Qaytadan urinib ko'ring.")
         return
     vaqt = _ig_vaqt(b)
+    if not ig and ig_fon_bormi():                       # ko'rinmas brauzer — kompyuterdan bemalol foydalanasiz
+        if vaqt:
+            rejalar = [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl]
+            sozlama_ozgartir("ig_rejalar", rejalar + [{"vaqt": vaqt, "fayl": fayl, "tavsif": tavsif,
+                                                       "brauzer": True}], ayt=False)
+            threading.Timer(vaqt - time.time(), _ig_rejadan_brauzerda, args=(fayl, tavsif)).start()
+            gapir(f"Rejalashtirildi: {datetime.datetime.fromtimestamp(vaqt):%d-%m soat %H:%M} da orqa fonda "
+                  "o'zim joylayman. Shu vaqtda kompyuter yoqiq bo'lsin.")
+            return
+        gapir("Orqa fonda joylayapman — kompyuterdan bemalol foydalanavering. Tayyor bo'lsa aytaman.")
+        fonda(_ig_fonda_joyla, fayl, tavsif)
+        return
     if not ig:                                          # API ulanmagan — brauzer orqali (parolsiz, xavfsiz)
         if vaqt and SOZ.get("ig_avto_ulash"):
             rejalar = [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl]
@@ -1964,7 +2001,8 @@ def chat_sozlamalari():
                "claude": bool(SOZ.get("claude_kalit")), "claude_model": SOZ.get("claude_model") or "claude-sonnet-5",
                "claude_modellar": sun_iy.CLAUDE_MODELLAR, "claude_xato": sun_iy.claude_xato},
         "ig": {"bor": bool(SOZ.get("ig_token")), "username": SOZ.get("ig_username") or "",
-               "avto": bool(SOZ.get("ig_avto_ulash")),
+               "avto": bool(SOZ.get("ig_avto_ulash")), "fon": ig_fon_bormi(),
+               "fon_kirgan": bool(SOZ.get("ig_brauzer_kirgan")),
                "rejalar": len(SOZ.get("ig_rejalar", []))},
         "tga": {"holat": tga.holat if tga else "ulanmagan", "men": tga.men if tga else None,
                 "api_bor": bool(SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")),
@@ -2236,6 +2274,34 @@ def chat_sozlama_yoz(kalit, qiymat):
             return True, "Claude ulandi. Savol va buyruqlar endi Claude'ga boradi, rasmlar — bepul AI'ga." + tekshiruv
         os.environ.pop("ANTHROPIC_API_KEY", None)
         return True, "Claude o'chirildi — endi faqat bepul AI ishlaydi."
+    if kalit == "ig_kirish":                                     # Instagram'ning o'z sahifasida o'zi kiradi
+        try:
+            import instagram_brauzer
+        except Exception:
+            return False, "Orqa fon rejimi uchun kutubxona yo'q (playwright)."
+        if not instagram_brauzer.bormi():
+            return False, "Orqa fon rejimi uchun kutubxona yo'q (playwright)."
+
+        def kir():
+            try:
+                ok = instagram_brauzer.kirish_oynasi()
+            except Exception as xato:
+                print(f"(Instagram kirish oynasi xatosi: {xato})")
+                ok = False
+            sozlama_ozgartir("ig_brauzer_kirgan", bool(ok), ayt=False)
+            gapir("✅ Instagram'ga kirildi. Endi orqa fonda joylay olaman." if ok
+                  else "Instagram'ga kirilmadi. Qaytadan urinib ko'ring.")
+        fonda(kir)
+        return True, ("Instagram'ning kirish oynasi ochildi — u yerga o'zingiz kiring (parol Jarvis'da saqlanmaydi). "
+                      "Kirgach, oyna o'zi yopiladi.")
+    if kalit == "ig_brauzer_chiqish":
+        try:
+            import instagram_brauzer
+            instagram_brauzer.chiqish()
+        except Exception:
+            pass
+        sozlama_ozgartir("ig_brauzer_kirgan", False, ayt=False)
+        return True, "Orqa fon rejimidan chiqildi (kirish ma'lumotlari o'chirildi)."
     if kalit == "ig_avto_ulash":
         sozlama_ozgartir("ig_avto_ulash", bool(qiymat), ayt=False)
         return True, ("To'liq avtomatik: Jarvis 'Ulashish'ni ham o'zi bosadi va vaqtga qo'ya oladi." if qiymat
@@ -3746,12 +3812,20 @@ if __name__ == "__main__":
         import pyaudio                   # noqa: F401  — mikrofon
         flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
         for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio", "webview", "clr",
-                          "anthropic", "telethon", "telegram_akkaunt", "qrcode", "cryptography", "instagram"):
+                          "anthropic", "telethon", "telegram_akkaunt", "qrcode", "cryptography", "instagram", "instagram_brauzer"):
             try:
                 __import__(ixtiyoriy)
                 print(f"  + {ixtiyoriy}")
             except Exception as xato:
                 print(f"  - {ixtiyoriy}: {xato}")
+        try:                             # Instagram orqa fon rejimi: playwright + Edge
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as _p:
+                _b = _p.chromium.launch(channel="msedge", headless=True)
+                _b.close()
+            print("  + playwright/edge (Instagram orqa fon)")
+        except Exception as xato:
+            print(f"  - playwright/edge: {xato}")
         yuz.Tanuvchi.ol()                # yuz tanish modellari EXE ichida va ishlaydi
         import odam
         odam.OdamAniqlagich.ol()
