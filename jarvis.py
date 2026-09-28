@@ -61,6 +61,7 @@ import kamera
 import yuz
 import kompyuter
 import qulayliklar
+import sayt
 import sozlamalar
 import suhbat
 import server
@@ -3123,6 +3124,25 @@ SAYTLAR = {
 }
 
 
+def sayt_tahlil(gap):
+    url = sayt.manzil_top(gap)
+    if not sun_iy.bormi():
+        webbrowser.open(url)
+        gapir("Saytni baholash uchun sun'iy intellekt kaliti kerak. Hozircha saytni brauzerda ochdim.")
+        return
+    gapir(f"{url.split('//', 1)[-1].rstrip('/')} saytini o'qiyapman...")
+    try:
+        malumot = sayt.oqi(url)
+    except sayt.SaytXato as xato:
+        gapir(f"Saytni o'qiy olmadim: {xato}.")
+        return
+    javob = sun_iy.sayt_tahlil(gap, malumot, til())
+    if javob:
+        gapir(javob, tarjima_qil=False)
+    else:
+        gapir("Sun'iy intellekt javob bermadi — keyinroq qayta urinib ko'ring.")
+
+
 def ilova_och(gap):
     nom = ilova_nomi(gap)
     if not nom:
@@ -3143,9 +3163,10 @@ def ilova_och(gap):
             webbrowser.open(url)
             gapir(f"{kalit} brauzerda ochildi.")
             return
-    if "." in nom.replace(" ", ""):                 # "olx.uz" kabi manzil aytilsa
-        webbrowser.open("https://" + nom.replace(" ", ""))
-        gapir(f"{nom} ochildi.")
+    url = sayt.manzil_top(gap)                      # "olx.uz saytiga kir" kabi manzil aytilsa
+    if url:
+        webbrowser.open(url)
+        gapir(f"{url.split('//', 1)[-1].rstrip('/')} ochildi.")
         return
     gapir(f"{nom} degan dastur topilmadi. Sayt bo'lsa, to'liq nomini ayting, "
           "masalan: instagram, youtube.")
@@ -3291,6 +3312,10 @@ def bajar(b):
     if "xayr" in sozlar and len(sozlar) <= 3:
         gapir(f"Xayr, {ISM}!")
         return False
+
+    # "cuticlehair.co saytiga kirib 1 dan 10 gacha baholab ber" — saytni o'qib, AI'ga tahlil qildiramiz
+    elif sayt.tahlilmi(b):
+        sayt_tahlil(b)
 
     # Aniq savol ("... qaysi?", "nima uchun ...", "... haqida gapir") — AI'ga. Aks holda savol
     # ichidagi tasodifiy so'z ("shahri", "kamera") mahalliy buyruq bo'lib qolishi mumkin edi.

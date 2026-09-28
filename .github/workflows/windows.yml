@@ -65,6 +65,7 @@ jobs:
           --hidden-import telegram_akkaunt
           --hidden-import qrcode
           --hidden-import instagram_brauzer
+          --hidden-import sayt
           --collect-all playwright
           --hidden-import clr
           --hidden-import pyaudio
