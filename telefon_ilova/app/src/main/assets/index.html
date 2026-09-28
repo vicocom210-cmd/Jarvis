@@ -166,7 +166,7 @@
 <body>
 <div class="aura"></div>
 <div class="qatlam">
-  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.7</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
+  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.8</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
   <div class="tablar2">
     <div class="tab2 faol" id="tabBuyruq" onclick="bolimTanla('buyruq')">💬 Buyruqlar</div>
     <div class="tab2" id="tabKamera" onclick="bolimTanla('kamera')">📹 Kamera</div>
@@ -202,6 +202,7 @@
       <button class="kam-tugma" onclick="kameraYukla()">↻ Yangilash</button>
       <button class="kam-tugma" id="qoshOchBtn" onclick="qoshOch()">➕ Kamera qo'shish</button>
     </div>
+    <button class="kam-tugma" id="hikBtn" onclick="hikConnect()">📱 Hik-Connect'da jonli ko'rish (uydan tashqarida)</button>
     <!-- Kamera qo'shish / o'zgartirish -->
     <div class="qosh-karta yashir" id="qoshKarta">
       <h3 id="qoshSarl">➕ Yangi kamera</h3>
@@ -263,7 +264,7 @@
       <div class="izoh" id="s-pin-iz">PIN kod — kompyuterdagi Jarvis chat sozlamalaridagi PIN. Eshikni ochish uchun kamida 6 raqam bo'lishi kerak.</div>
     </div>
     <button class="knop" id="s-saqla" onclick="sozlamaSaqla()">Saqlash</button>
-    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.7</div>
+    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.8</div>
   </div>
 </div>
 
@@ -462,6 +463,9 @@ function bulutSorov(amal, m={}, soniya=12){ return new Promise(tayyor=>{
   bulutKut[id]=tayyor; setTimeout(()=>{ if(bulutKut[id]){ delete bulutKut[id]; tayyor(null); } }, soniya*1000);
   const yubor=()=>mqc.publish('jarvis/'+S.kanal+'/cmd', JSON.stringify({e}));
   if(mqc.connected) yubor(); else mqc.once('connect', yubor); }); }
+function hikConnect(){                            // uyda yoqiq qurilma bo'lmasa — Hikvision bulut ilovasi
+  try{ Android.ilovaOch('com.connect.enduser,com.hikvision.hikconnect,com.mcu.iVMS','Hik-Connect'); }
+  catch(e){ location.href='https://play.google.com/store/search?q=Hik-Connect'; } }
 async function bulutRejim(holat, royxat){
   if(!shifrliBormi()) return false;
   holat.className='kam-izoh'; holat.textContent="⏳ Uydan tashqaridasiz — internet orqali (shifrlangan) ulanyapman...";
@@ -469,6 +473,9 @@ async function bulutRejim(holat, royxat){
   if(!d || !d.ok) return false;
   uzoq=true; uyda=false; togri=false;
   holat.className='kam-izoh'; holat.textContent="🔒🌍 Internet orqali, shifrlangan kanal. Kamerani bosing — jonli ko'rish (sekundiga ~1 kadr).";
+  if(d.uyda===false){ holat.className='kam-izoh ogoh';
+    holat.textContent="💻 Kompyuter (noutbuk) hozir uyda emas — kameralarga faqat uy Wi-Fi'dagi qurilma ulana oladi. "+
+      "Pastdagi '📱 Hik-Connect' tugmasi bilan Hikvision ilovasida ko'ring."; }
   document.getElementById('eshikKarta').classList.toggle('yashir', !d.eshik);
   if(d.eshik) document.getElementById('eshikNom').textContent=d.eshik;
   royxat.innerHTML='';

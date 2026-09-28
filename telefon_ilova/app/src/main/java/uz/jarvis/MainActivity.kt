@@ -142,6 +142,23 @@ open class MainActivity : android.app.Activity() {
             asosiy.post { finish() }
         }
 
+        // Boshqa ilovani ochish (masalan, Hik-Connect). O'rnatilmagan bo'lsa — Play Market'da qidiradi
+        @JavascriptInterface
+        fun ilovaOch(paketlar: String, qidiruv: String) {
+            asosiy.post {
+                for (p in paketlar.split(",").map { it.trim() }.filter { it.isNotEmpty() }) {
+                    val i = packageManager.getLaunchIntentForPackage(p)
+                    if (i != null) { startActivity(i); return@post }
+                }
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=" + Uri.encode(qidiruv))))
+                } catch (e: Exception) {
+                    startActivity(Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://play.google.com/store/search?q=" + Uri.encode(qidiruv))))
+                }
+            }
+        }
+
         // Uydan tashqarida: bulut xabarlarini AES-256-GCM bilan shifrlash (kalit uy Wi-Fi'da olinadi)
         @JavascriptInterface
         fun shifrla(kalitHex: String, matn: String): String = try { Shifr.shifrla(kalitHex, matn) } catch (e: Exception) { "" }

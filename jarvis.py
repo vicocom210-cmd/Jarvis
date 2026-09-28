@@ -2052,12 +2052,25 @@ def chat_sozlama_yoz(kalit, qiymat):
     return False, "Noma'lum sozlama."
 
 
+def uy_tarmogidami():
+    """Kompyuter kameralar bilan bitta tarmoqdami (noutbuk uydan olib ketilgan bo'lsa — yo'q)."""
+    ip = server.ip_manzil()
+    tarmoqlar = {".".join(str(k.get("ip", "")).split(".")[:3]) for k in kameralar() if k.get("ip")}
+    return not tarmoqlar or ".".join(ip.split(".")[:3]) in tarmoqlar
+
+
+UYDA_EMAS = ("Kompyuter hozir uy tarmog'ida emas — kameralarga faqat uy Wi-Fi'dagi qurilma ulana oladi. "
+             "Uydan tashqarida ko'rish uchun Hik-Connect ilovasidan foydalaning (pastdagi tugma).")
+
+
 def telefon_kamera_amali(amal, m):
     """Telefon ilovasining Kamera bo'limi (faqat uy Wi-Fi'da, PIN tekshirilgan)."""
     import base64
     eshik = eshik_kamerasi()
+    if amal in ("rasm", "eshik", "skaner") and not uy_tarmogidami():
+        return {"ok": False, "xato": UYDA_EMAS, "uyda_emas": True}
     if amal == "kameralar":
-        return {"ok": True, "versiya": VERSIYA, "eshik": eshik["nom"] if eshik else None,
+        return {"ok": True, "versiya": VERSIYA, "uyda": uy_tarmogidami(), "eshik": eshik["nom"] if eshik else None,
                 "kameralar": [{"nom": k["nom"], "eshik": bool(eshik and k.get("ip") == eshik.get("ip")),
                                "ip": k.get("ip", ""), "login": k.get("login", "admin"),
                                "kanal": k.get("kanal", "1"), "http_port": k.get("http_port", 80),

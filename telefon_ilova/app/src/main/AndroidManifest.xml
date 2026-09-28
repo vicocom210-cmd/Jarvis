@@ -8,6 +8,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Uydan tashqarida (uyda yoqiq qurilma bo'lmasa) — Hik-Connect ilovasini ochish uchun -->
+    <queries>
+        <package android:name="com.connect.enduser" />
+        <package android:name="com.hikvision.hikconnect" />
+        <package android:name="com.mcu.iVMS" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
