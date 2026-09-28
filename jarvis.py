@@ -1791,6 +1791,38 @@ def chat_sozlama_yoz(kalit, qiymat):
     return False, "Noma'lum sozlama."
 
 
+def telefon_kamera_amali(amal, m):
+    """Telefon ilovasining Kamera bo'limi (faqat uy Wi-Fi'da, PIN tekshirilgan)."""
+    import base64
+    eshik = eshik_kamerasi()
+    if amal == "kameralar":
+        return {"ok": True, "eshik": eshik["nom"] if eshik else None,
+                "kameralar": [{"nom": k["nom"], "eshik": bool(eshik and k.get("ip") == eshik.get("ip"))}
+                              for k in kameralar()]}
+    if amal == "rasm":
+        k = next((x for x in kameralar() if x["nom"] == m.get("nom")), None)
+        if not k:
+            return {"ok": False, "xato": "Kamera topilmadi"}
+        jpg, xato = kamera.rasm_baytlari(k, eni=int(m.get("eni") or 960))
+        return {"ok": True, "rasm": base64.b64encode(jpg).decode()} if jpg else {"ok": False, "xato": xato}
+    if amal == "eshik":
+        if len(str(SOZ.get("telefon_pin") or "")) < 6:
+            return {"ok": False, "xato": "Xavfsizlik uchun PIN kamida 6 raqam bo'lsin. Kompyuterdagi chat "
+                                         "sozlamalarida PIN'ni almashtiring, keyin ilovada ham kiriting."}
+        ok, xabar = eshikni_och("telefon ilovasidan")
+        return {"ok": ok, "xabar": "🚪 Eshik ochildi" if ok else f"Ochilmadi: {xabar}"}
+    if amal == "skaner":
+        if len(str(SOZ.get("telefon_pin") or "")) < 6:
+            return {"ok": False, "xato": "Xavfsizlik uchun PIN kamida 6 raqam bo'lsin (skanerlash eshikni ochadi)."}
+        ok, xabar, yol = eshik_skaner(och=True)
+        natija = {"ok": ok, "xabar": xabar}
+        if yol:
+            jpg = open(yol, "rb").read()
+            natija["rasm"] = base64.b64encode(jpg).decode()
+        return natija
+    return {"ok": False, "xato": "Noma'lum amal"}
+
+
 def chatdan_keldi(matn):
     """Chat oynasida yozilgan gap — xuddi pastdagi maydonga yozilgandek miya'ga boradi
     (tasdiq so'ralsa, 'ha'ni ham chatdan yozish mumkin)."""
@@ -2877,6 +2909,7 @@ def miya():
     himoya.ogohlantir = lambda matn: bot.yoz(matn) if bot and bot.egasi else None
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
     server.kamera_ol = lambda nom: next((k for k in kameralar() if k["nom"] == nom), None)
+    server.tel_amal = telefon_kamera_amali
     threading.Thread(target=internetni_kuzat, daemon=True).start()
     if server.ishga_tushir(web_bajar, pin):
         print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")

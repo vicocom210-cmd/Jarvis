@@ -25,6 +25,7 @@ _sozlama_ol = None          # () -> dict  — chatdagi sozlamalar bo'limi uchun
 _sozlama_yoz = None         # (kalit, qiymat) -> (ok, xabar)
 internet_bor = True         # jarvis.py kuzatib turadi — chat oynasida ko'rsatiladi
 kamera_ol = None            # (nom) -> kamera sozlamasi  — jonli video uchun (jarvis.py beradi)
+tel_amal = None             # (amal, malumot) -> dict — telefon ilovasining Kamera bo'limi (jarvis.py beradi)
 
 
 def chat_sozla(qabul, holat_ol, sozlama_ol=None, sozlama_yoz=None):
@@ -188,6 +189,14 @@ class _Handler(BaseHTTPRequestHandler):
         ok, xato = himoya.tekshir(self.client_address[0], malumot.get("pin", ""), _pin)
         if not ok:                                   # taxmin qilib topishga qarshi bloklash bilan
             self._javob(403, {"ok": False, "xato": xato})
+            return
+        if self.path.startswith("/tel/"):            # telefon ilovasi: kameralar, rasm, eshik, skaner
+            amal = self.path[len("/tel/"):].strip("/")
+            try:
+                natija = tel_amal(amal, malumot) if tel_amal else {"ok": False, "xato": "Tayyor emas"}
+            except Exception as xato_:
+                natija = {"ok": False, "xato": f"Xato: {xato_}"}
+            self._javob(200, natija)
             return
         matn = (malumot.get("matn") or "").strip()
         if not matn:

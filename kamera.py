@@ -414,3 +414,24 @@ def veb_kamera_kadrlari(soni=12, oraliq=0.4):
     finally:
         video.release()
     return olingan
+
+
+def rasm_baytlari(k, eni=960):
+    """Telefon uchun kichraytirilgan JPG baytlari — faylga SAQLAMAYDI (jonli ko'rishda
+    har soniyada rasm so'raladi, Rasmlar papkasi to'lib ketmasin). (baytlar, None) yoki (None, xato)."""
+    try:
+        jpg = _isapi_rasm(k)
+    except PermissionError as xato:
+        return None, str(xato)
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return (jpg, None) if jpg else (None, "Kameraga ulanib bo'lmadi")
+    rasm = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR) if jpg else _rtsp_kadr(k, yengil=True)
+    if rasm is None:
+        return None, "Kameraga ulanib bo'lmadi"
+    if rasm.shape[1] > eni:
+        rasm = cv2.resize(rasm, (eni, int(rasm.shape[0] * eni / rasm.shape[1])), interpolation=cv2.INTER_AREA)
+    ok, kod = cv2.imencode(".jpg", rasm, [cv2.IMWRITE_JPEG_QUALITY, 72])
+    return (kod.tobytes(), None) if ok else (None, "Rasmni tayyorlab bo'lmadi")
