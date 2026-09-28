@@ -74,7 +74,8 @@ class Akkaunt:
         self.telefon = ""
         self.kod_hash = None
         self.men = None                       # ulangan akkaunt nomi
-        self.holat = "ulanmagan"              # ulanmagan / kod_kutilmoqda / parol_kerak / ulangan / xato
+        self.holat = "ulanmagan"              # ulanmagan / kod_kutilmoqda / qr_kutilmoqda / parol_kerak / ulangan / xato
+        self.qr_url, self.qr_xato = None, ""
 
     # --- ichki: alohida thread'dagi asyncio ---
     def _bajar(self, coro, timeout=40):
@@ -104,10 +105,7 @@ class Akkaunt:
         return self.holat
 
     def _ulandi(self):
-        me = self._bajar(self.mijoz.get_me())
-        self.men = " ".join(x for x in (me.first_name, me.last_name) if x) + (f" (@{me.username})" if me.username else "")
-        self.holat = "ulangan"
-        self.holat_xabari(f"✈️ Telegram akkaunt ulandi: {self.men}")
+        self._bajar(self._ulandi_async())
 
     def toxtat(self):
         if self.mijoz is not None:
@@ -127,6 +125,45 @@ class Akkaunt:
         self.kod_hash = natija.phone_code_hash
         self.holat = "kod_kutilmoqda"
         return _qayerga(natija)
+
+    def qr_boshla(self, daqiqa=3):
+        """QR kod bilan kirish (kod kerak emas): telefondagi Telegram -> Sozlamalar -> Qurilmalar ->
+        'Kompyuterni ulash' bilan skanerlanadi. QR har ~30 soniyada yangilanadi (self.qr_url)."""
+        from telethon.errors import SessionPasswordNeededError
+        self.qr_url, self.qr_xato = None, ""
+
+        async def ish():
+            try:
+                qr = await self.mijoz.qr_login()
+                self.qr_url, self.holat = qr.url, "qr_kutilmoqda"
+                tugash = self.loop.time() + daqiqa * 60
+                while True:
+                    try:
+                        await qr.wait(timeout=25)
+                        break
+                    except asyncio.TimeoutError:
+                        if self.loop.time() > tugash:
+                            self.holat, self.qr_url = "ulanmagan", None
+                            self.qr_xato = "QR vaqti tugadi — qaytadan 'QR kod bilan kirish'ni bosing"
+                            return
+                        await qr.recreate()
+                        self.qr_url = qr.url
+            except SessionPasswordNeededError:
+                self.holat, self.qr_url = "parol_kerak", None
+                return
+            except Exception as xato:
+                self.holat, self.qr_url, self.qr_xato = "ulanmagan", None, xato_matni(xato)
+                return
+            self.qr_url = None
+            await self._ulandi_async()
+
+        asyncio.run_coroutine_threadsafe(ish(), self.loop)
+
+    async def _ulandi_async(self):
+        me = await self.mijoz.get_me()
+        self.men = " ".join(x for x in (me.first_name, me.last_name) if x) + (f" (@{me.username})" if me.username else "")
+        self.holat = "ulangan"
+        self.holat_xabari(f"✈️ Telegram akkaunt ulandi: {self.men}")
 
     def qayta_yubor(self):
         """Kodni boshqa usulda (odatda SMS) qayta yuborish."""

@@ -434,11 +434,31 @@ function telegramAkkauntBolimi(ich, T){
       const i=e('input','maydon'); i.placeholder=bel; if(tur) i.type=tur; m[k]=i; f.appendChild(i); }
     if(T.api_bor){ m.api_id.placeholder='api_id saqlangan'; m.api_hash.placeholder='api_hash saqlangan'; }
     b.appendChild(f);
-    const kb=matnli('button','tugma','📨 Kod yuborish'); kb.style.marginTop='10px';
+    // --- QR bilan kirish (tavsiya — kod kelishini kutish shart emas) ---
+    const qrb=matnli('button','tugma','📷 QR kod bilan kirish (tavsiya)'); qrb.style.marginTop='12px'; qrb.style.marginRight='10px';
+    const qrJoy=e('div'); qrJoy.style.marginTop='12px';
+    let qrTaymer=null;
+    const qrKuzat=async()=>{ let d; try{ d=await sozSorov('tga_qr_holat',1); }catch(_){ return; }
+      if(d.url && !d.qr){ clearInterval(qrTaymer); ayt({ok:false,xabar:"QR rasmini chizib bo'lmadi (qrcode kutubxonasi yo'q) — 'Kod bilan kirish'dan foydalaning"}); return; }
+      if(d.qr){ qrJoy.innerHTML='';
+        const i=document.createElement('img'); i.src=d.qr;                 // QR faqat shu kompyuterda chiziladi (token tashqariga chiqmaydi)
+        i.style.cssText='width:240px;height:240px;background:#fff;border-radius:14px;padding:8px;display:block';
+        qrJoy.appendChild(i);
+        qrJoy.appendChild(e('div','izoh',"📱 Telefonda: <b>Telegram → Sozlamalar → Qurilmalar → Kompyuterni ulash</b> (Link Desktop Device) → shu QR'ni skanerlang. QR har 30 soniyada yangilanadi.")); }
+      if(d.holat==='ulangan'){ clearInterval(qrTaymer); qrJoy.innerHTML=''; ayt(d); setTimeout(sozlamalarniYukla,1500); }
+      else if(d.holat==='parol_kerak'){ clearInterval(qrTaymer); qrJoy.innerHTML=''; ayt({ok:false,xabar:d.xabar}); kq.style.display='grid'; par.focus(); }
+      else if(!d.ok){ clearInterval(qrTaymer); qrJoy.innerHTML=''; ayt(d); } };
+    qrb.onclick=async()=>{ qrb.disabled=true; nat.textContent='⏳ Telegram\'ga ulanyapman...'; nat.style.color='';
+      const d=await sozSorov('tga_qr',{api_id:m.api_id.value,api_hash:m.api_hash.value}); qrb.disabled=false; ayt(d);
+      if(d.ok && !/allaqachon/.test(d.xabar||'')){ clearInterval(qrTaymer); qrTaymer=setInterval(qrKuzat,2000); setTimeout(qrKuzat,800); }
+      else if(d.ok) setTimeout(sozlamalarniYukla,1200); };
+    b.appendChild(qrb);
+    const kb=matnli('button','tugma ikkinchi','📨 Kod bilan kirish'); kb.style.marginTop='12px';
     kb.onclick=async()=>{ kb.disabled=true; nat.textContent='⏳ Telegram\'ga ulanyapman...'; nat.style.color='';
       const d=await sozSorov('tga_kod',{api_id:m.api_id.value,api_hash:m.api_hash.value,telefon:m.telefon.value}); kb.disabled=false; ayt(d);
       if(d.ok){ kq.style.display='grid'; qy.style.display=''; } };
-    b.appendChild(kb);
+    b.appendChild(kb); b.appendChild(qrJoy);
+    b.appendChild(e('div','izoh',"Telefon raqami faqat <b>kod bilan kirish</b> uchun kerak. QR uchun faqat api_id va api_hash yetarli."));
     const kq=e('div'); kq.style.cssText='display:'+(T.holat==='ulanmagan'?'none':'grid')+';grid-template-columns:1fr 1fr auto;gap:10px;margin-top:12px';
     const kod=e('input','maydon'); kod.placeholder='Telegram\'dan kelgan kod'; kod.inputMode='numeric';
     const par=e('input','maydon'); par.type='password'; par.placeholder='2 bosqichli parol (bo\'lsa)';

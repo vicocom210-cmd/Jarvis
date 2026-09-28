@@ -1975,6 +1975,39 @@ def chat_sozlama_yoz(kalit, qiymat):
             return False, "Kod yuborilmadi: " + telegram_akkaunt.xato_matni(xato)
         print(f"(Telegram kodi yuborildi: {qayerga})")
         return True, f"Kod yuborildi — {qayerga}. Kodni pastga yozing."
+    if kalit == "tga_qr" and isinstance(qiymat, dict):          # QR bilan kirish — kod kerak emas
+        api_id = str(qiymat.get("api_id") or SOZ.get("tga_api_id") or "").strip()
+        api_hash = str(qiymat.get("api_hash") or SOZ.get("tga_api_hash") or "").strip()
+        if not api_id.isdigit() or len(api_hash) < 20:
+            return False, "Avval api_id va api_hash ni yozing (my.telegram.org dan)."
+        sozlama_ozgartir("tga_api_id", api_id, ayt=False)
+        sozlama_ozgartir("tga_api_hash", api_hash, ayt=False)
+        holat_ = tga_ishga_tushir()
+        if holat_ == "ulangan":
+            return True, f"Akkaunt allaqachon ulangan: {tga.men}"
+        if not tga or not tga.mijoz:
+            return False, "Telegram'ga ulanib bo'lmadi: " + (getattr(tga, "oxirgi_xato", "") or "internetni tekshiring")
+        tga.qr_boshla()
+        return True, "QR kod tayyorlanyapti..."
+    if kalit == "tga_qr_holat":                                  # chat oynasi har 2 soniyada so'raydi
+        if not tga:
+            return False, "Boshlanmagan."
+        qosh = {"holat": tga.holat, "men": tga.men}
+        if tga.qr_url:
+            try:
+                import base64
+                import io
+                import qrcode
+                rasm = qrcode.make(tga.qr_url, box_size=8, border=2)
+                bufer = io.BytesIO()
+                rasm.save(bufer, format="PNG")
+                qosh["qr"] = "data:image/png;base64," + base64.b64encode(bufer.getvalue()).decode()
+            except Exception as xato:
+                qosh["url"] = tga.qr_url                          # qrcode yo'q — chat o'zi chizadi
+                print(f"(QR rasm xatosi: {xato})")
+        xabar = {"ulangan": f"✅ Ulandi: {tga.men}", "parol_kerak": "Ikki bosqichli parolingizni kiriting va 'Kirish'ni bosing",
+                 "qr_kutilmoqda": "Telefonda skanerlang"}.get(tga.holat, tga.qr_xato or "Kutilmoqda...")
+        return tga.holat != "ulanmagan" or not tga.qr_xato, xabar, qosh
     if kalit == "tga_qayta":                                     # kod kelmadi — SMS orqali
         import telegram_akkaunt
         if not tga or not tga.kod_hash:
@@ -3329,7 +3362,7 @@ if __name__ == "__main__":
         import pyaudio                   # noqa: F401  — mikrofon
         flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
         for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio", "webview", "clr",
-                          "anthropic", "telethon", "telegram_akkaunt"):
+                          "anthropic", "telethon", "telegram_akkaunt", "qrcode"):
             try:
                 __import__(ixtiyoriy)
                 print(f"  + {ixtiyoriy}")
