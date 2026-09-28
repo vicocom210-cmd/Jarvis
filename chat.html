@@ -728,6 +728,9 @@ async function sozlamalarniYukla(){
       "<b>\"Instagram statistikasi\"</b>.<br>🔑 <b>Kalitsiz ham ishlaydi:</b> Jarvis brauzerdagi Instagram'ni (siz kirgan akkaunt) o'zi ochib, videoni yuklaydi va tavsifni qo'yadi — "+
       "'Ulashish'ni siz bosasiz. Kalit (Meta token) bo'lsa — to'liq avtomatik, vaqtga qo'yish, izohlar va statistika ham ishlaydi. Parol hech qachon so'ralmaydi.");
     b.querySelector('h3').appendChild(matnli('span','holat-belgi '+(S.ig.bor?'yashil':'kulrang'), S.ig.bor?('@'+S.ig.username):'Ulanmagan'));
+    { const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','',"To'liq avtomatik (brauzer rejimi)"));
+      t.appendChild(matnli('small','',"Jarvis 'Ulashish'ni ham o'zi bosadi, vaqtga qo'ya oladi. Chrome'da Instagram'ga kirilgan bo'lsin; parol so'ralmaydi"));
+      r.appendChild(t); r.appendChild(almashtirgich(S.ig.avto,'ig_avto_ulash')); b.appendChild(r); }
     if(S.ig.rejalar) b.appendChild(matnli('div','izoh','⏰ Rejadagi postlar: '+S.ig.rejalar+' ta (shu vaqtda kompyuter yoqiq bo\'lsin)'));
     b.appendChild(kiritish('', S.ig.bor?'•••• kalit saqlangan (almashtirish uchun yangisini qo\'ying)':'IGAA... yoki EAA... (Instagram kaliti)','ig_token','Ulash','password'));
     if(S.ig.bor){ const o=matnli('button','tugma ikkinchi',"Instagram'ni uzish"); o.style.marginTop='12px';

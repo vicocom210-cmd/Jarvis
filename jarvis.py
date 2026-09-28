@@ -1258,6 +1258,11 @@ def _ig_joyla_fonda(fayl, tavsif, rejadan=False):
         sozlama_ozgartir("ig_rejalar", [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl], ayt=False)
 
 
+def _ig_rejadan_brauzerda(fayl, tavsif):
+    sozlama_ozgartir("ig_rejalar", [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl], ayt=False)
+    _ig_brauzerda_joyla(fayl, tavsif)
+
+
 def ig_rejalarni_tikla():
     """Kompyuter qayta yonganda rejalashtirilgan postlar davom etadi (kechikkanlari darhol joylanadi)."""
     for r in list(SOZ.get("ig_rejalar", [])):
@@ -1266,7 +1271,10 @@ def ig_rejalarni_tikla():
             continue
         if qoldi <= 0:
             print(f"(Instagram: rejadagi post kechikdi — hozir joylayman: {os.path.basename(r['fayl'])})")
-        threading.Timer(max(qoldi, 5), _ig_joyla_fonda, args=(r["fayl"], r["tavsif"], True)).start()
+        if r.get("brauzer"):
+            threading.Timer(max(qoldi, 60), _ig_rejadan_brauzerda, args=(r["fayl"], r["tavsif"])).start()
+        else:
+            threading.Timer(max(qoldi, 5), _ig_joyla_fonda, args=(r["fayl"], r["tavsif"], True)).start()
 
 
 IG_BOSQICH = {                   # Instagram veb-sahifasidagi tugmalar (ingliz / rus / o'zbek / turk)
@@ -1276,6 +1284,8 @@ IG_BOSQICH = {                   # Instagram veb-sahifasidagi tugmalar (ingliz /
     "ok": ("OK",),
     "keyingi": ("Next", "Далее", "Keyingi", "İleri"),
     "tavsif": ("Write a caption", "Добавьте подпись", "Izoh yozing", "Açıklama yaz"),
+    "ulash": ("Share", "Поделиться", "Ulashish", "Paylaş"),
+    "tayyor": ("has been shared", "been shared", "опубликован", "опубликовано", "paylaşıldı", "ulashildi"),
 }
 
 
@@ -1331,8 +1341,29 @@ def _ig_brauzerda_joyla(fayl, tavsif):
         else:
             gapir("Tavsif maydonini topolmadim — uni bosib, Ctrl+V qiling.")
             return
+    if not SOZ.get("ig_avto_ulash"):
+        ui_navbat.put(("korsat",))
+        gapir("Hammasi tayyor! Tekshirib ko'ring va 'Ulashish' (Share) tugmasini o'zingiz bosing.")
+        return
+    time.sleep(1)
+    if not _ig_kut_bos(IG_BOSQICH["ulash"], urinish=4):
+        gapir("'Ulashish' tugmasini topolmadim — uni o'zingiz bosing.")
+        return
+    for _ in range(30):                                # 2 daqiqagacha: "Reel ulashildi" yozuvini kutamiz
+        time.sleep(4)
+        try:
+            rasm = os.path.join(tempfile.gettempdir(), "jarvis_ocr.png")
+            pyautogui.screenshot(rasm)
+            sozlar = boshqaruv.ekran_sozlari(rasm)
+            if any(boshqaruv.yozuvni_top(k, sozlar) for k in IG_BOSQICH["tayyor"]):
+                ui_navbat.put(("korsat",))
+                gapir("✅ Instagramga joylandi!")
+                return
+        except Exception as xato:
+            print(f"(Tekshirib bo'lmadi: {xato})")
+            break
     ui_navbat.put(("korsat",))
-    gapir("Hammasi tayyor! Tekshirib ko'ring va 'Ulashish' (Share) tugmasini o'zingiz bosing.")
+    gapir("Ulashish tugmasini bosdim. Instagram'da joylanganini bir ko'rib qo'ying.")
 
 
 def ig_joylash(b):
@@ -1369,8 +1400,17 @@ def ig_joylash(b):
         return
     vaqt = _ig_vaqt(b)
     if not ig:                                          # API ulanmagan — brauzer orqali (parolsiz, xavfsiz)
-        if vaqt and not tasdiqla("Vaqtga qo'yish faqat Instagram kaliti ulansa ishlaydi. Hozir joylaymi?"):
-            gapir("Mayli. Instagram ilovasining o'zida ham 'Rejalashtirish' bor — Kengaytirilgan sozlamalarda.")
+        if vaqt and SOZ.get("ig_avto_ulash"):
+            rejalar = [r for r in SOZ.get("ig_rejalar", []) if r.get("fayl") != fayl]
+            sozlama_ozgartir("ig_rejalar", rejalar + [{"vaqt": vaqt, "fayl": fayl, "tavsif": tavsif,
+                                                       "brauzer": True}], ayt=False)
+            threading.Timer(vaqt - time.time(), _ig_rejadan_brauzerda, args=(fayl, tavsif)).start()
+            gapir(f"Rejalashtirildi: {datetime.datetime.fromtimestamp(vaqt):%d-%m soat %H:%M} da o'zim joylayman. "
+                  "Shu vaqtda kompyuter yoqiq, ekran qulflanmagan va Chrome'da Instagram'ga kirilgan bo'lsin.")
+            return
+        if vaqt and not tasdiqla("Vaqtga qo'yish uchun sozlamalarda Instagram bo'limida 'To'liq avtomatik'ni yoqing. "
+                                 "Hozir joylaymi?"):
+            gapir("Mayli.")
             return
         gapir("Instagram'ni ochib, videoni o'zim yuklayman. Bu vaqtda sichqoncha va klaviaturaga tegmang.")
         fonda(_ig_brauzerda_joyla, fayl, tavsif)
@@ -1924,6 +1964,7 @@ def chat_sozlamalari():
                "claude": bool(SOZ.get("claude_kalit")), "claude_model": SOZ.get("claude_model") or "claude-sonnet-5",
                "claude_modellar": sun_iy.CLAUDE_MODELLAR, "claude_xato": sun_iy.claude_xato},
         "ig": {"bor": bool(SOZ.get("ig_token")), "username": SOZ.get("ig_username") or "",
+               "avto": bool(SOZ.get("ig_avto_ulash")),
                "rejalar": len(SOZ.get("ig_rejalar", []))},
         "tga": {"holat": tga.holat if tga else "ulanmagan", "men": tga.men if tga else None,
                 "api_bor": bool(SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")),
@@ -2195,6 +2236,10 @@ def chat_sozlama_yoz(kalit, qiymat):
             return True, "Claude ulandi. Savol va buyruqlar endi Claude'ga boradi, rasmlar — bepul AI'ga." + tekshiruv
         os.environ.pop("ANTHROPIC_API_KEY", None)
         return True, "Claude o'chirildi — endi faqat bepul AI ishlaydi."
+    if kalit == "ig_avto_ulash":
+        sozlama_ozgartir("ig_avto_ulash", bool(qiymat), ayt=False)
+        return True, ("To'liq avtomatik: Jarvis 'Ulashish'ni ham o'zi bosadi va vaqtga qo'ya oladi." if qiymat
+                      else "'Ulashish'ni endi siz bosasiz.")
     if kalit == "ig_token":
         global _ig
         token = str(qiymat or "").strip()
