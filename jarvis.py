@@ -56,6 +56,7 @@ import arxiv
 import bilim
 import boshqaruv
 import bulut
+import himoya
 import kamera
 import yuz
 import kompyuter
@@ -1133,7 +1134,19 @@ kuzatuvchilar = {}                # kamera nomi -> kamera.Kuzatuvchi (harakatni 
 
 
 def kameralar():
-    return [k for k in SOZ.get("kameralar", []) if k.get("ip")]
+    """Barcha kameralar + eshik qurilmasi (u ham kamera: jonli ko'rish, kuzatish mumkin).
+    Eshik oxirida — "kamera 4" kabi raqamlar o'zgarmasin."""
+    royxat = [k for k in SOZ.get("kameralar", []) if k.get("ip")]
+    e = eshik_qurilmasi()
+    if e and all(k.get("ip") != e["ip"] for k in royxat):
+        royxat.append(e)
+    return royxat
+
+
+def eshik_qurilmasi():
+    """Chatdagi 'Eshik' bo'limida qo'shilgan domofon/eshik kamerasi (bo'lmasa None)."""
+    e = SOZ.get("eshik") or {}
+    return dict(e, nom=e.get("nom") or "Eshik", eshik=True) if e.get("ip") else None
 
 
 KAMERA_SONLARI = {"bir": 1, "birinchi": 1, "ikki": 2, "ikkinchi": 2, "uch": 3, "uchinchi": 3,
@@ -1250,12 +1263,18 @@ qorovullar = {}                   # kamera nomi -> yuz.EshikQorovuli
 
 
 def eshik_kamerasi():
-    """Eshikka ulangan kamera (belgilangani, bo'lmasa birinchisi)."""
-    royxat = kameralar()
+    """Eshik: 'Eshik' bo'limidagi qurilma; bo'lmasa eshik deb belgilangan kamera; bo'lmasa birinchisi."""
+    e = eshik_qurilmasi()
+    if e:
+        return e
+    royxat = [k for k in SOZ.get("kameralar", []) if k.get("ip")]
     return next((k for k in royxat if k.get("eshik")), royxat[0] if royxat else None)
 
 
 def _kamerani_saqla(k):
+    if eshik_qurilmasi() and k.get("ip") == eshik_qurilmasi()["ip"]:
+        sozlama_ozgartir("eshik", {x: v for x, v in k.items() if x != "eshik"}, ayt=False)
+        return
     royxat = [x if x.get("nom") != k.get("nom") else k for x in SOZ.get("kameralar", [])]
     sozlama_ozgartir("kameralar", royxat, ayt=False)
 
@@ -1286,10 +1305,65 @@ def eshik_buyrugi():
     if oxirgi_manba == "ovoz" and not tasdiqla("Eshikni ochaymi?"):
         gapir("Yaxshi, ochmadim.")
         return
+    if oxirgi_manba == "web" and len(str(SOZ.get("telefon_pin") or "")) < 6:
+        gapir("Xavfsizlik uchun telefondan eshik ochish uchun PIN kamida 6 raqam bo'lishi kerak. "
+              "Kompyuterdagi chat sozlamalarida PIN'ni almashtiring.")
+        return
     manba = {"ovoz": "ovoz bilan", "web": "telefon ilovasidan", "telegram": "Telegramdan",
              "chat": "chatdan"}.get(oxirgi_manba, "")
     ok, xabar = eshikni_och(manba, k)
     gapir("Eshik ochildi. 🚪" if ok else f"Eshikni ocha olmadim: {xabar}.")
+
+
+def eshik_skaner(och=True):
+    """Eshik oldidagi yuzni HOZIR tekshiradi (avtomatik kuzatuv tanimagan bo'lsa ham):
+    ~3 soniya kadrlar olinadi, tanish yuz 2 kadrda aniq tanilsa — eshik ochiladi.
+    (ok, xabar, rasm_yoli) qaytaradi."""
+    import cv2
+    k = eshik_kamerasi()
+    if not k:
+        return False, "Eshik qurilmasi qo'shilmagan", None
+    try:
+        t = yuz.Tanuvchi.ol()
+    except Exception as xato:
+        return False, f"Yuz tanish modeli yuklanmadi: {xato}", None
+    if not t.odamlar():
+        return False, "Hali hech kimning yuzi o'rgatilmagan", None
+    tugash = time.time() + 3.5
+    tanishlar, eng_yaxshi, eng_rasm, yuzli_kadr = {}, (None, 0.0), None, 0
+    for rasm in kamera.kadrlar(k, fps=5, ishlasin=lambda: time.time() < tugash):
+        yuzlar = t.yuzlar(rasm)
+        if not yuzlar:
+            eng_rasm = eng_rasm if eng_rasm is not None else rasm
+            continue
+        yuzli_kadr += 1
+        ism, ball = t.kim(yuzlar[0][1])
+        if ball > eng_yaxshi[1]:
+            eng_yaxshi, eng_rasm = (ism, ball), rasm
+        if ism and ball >= yuz.ESHIK_CHEGARA:
+            tanishlar[ism] = tanishlar.get(ism, 0) + 1
+    if eng_rasm is None:
+        return False, "Eshik kamerasidan rasm olib bo'lmadi", None
+    yol = kamera._yangi_yol(k, "-skaner")
+    cv2.imwrite(yol, eng_rasm)
+    tanilgan = max(tanishlar, key=tanishlar.get) if tanishlar else None
+    if tanilgan and tanishlar[tanilgan] >= 2:
+        if not och:
+            return True, f"👤 Eshik oldida {tanilgan}", yol
+        ok, xabar = eshikni_och(f"{tanilgan} (skanerlash)", k)
+        return ok, (f"✅ {tanilgan} tanildi ({int(eng_yaxshi[1] * 100)}%) — eshik ochildi" if ok
+                    else f"{tanilgan} tanildi, lekin eshik ochilmadi: {xabar}"), yol
+    if not yuzli_kadr:
+        return False, "Eshik oldida yuz ko'rinmadi — kameraga to'g'ri qarang va qayta skanerlang", yol
+    return False, "Tanish yuz topilmadi — eshik ochilmadi", yol
+
+
+def eshik_skaner_buyrugi():
+    gapir("Eshik oldini skanerlayapman.")
+    ok, xabar, yol = eshik_skaner(och=True)
+    if yol and bot and bot.egasi and (javob_telegramga or oxirgi_manba == "web"):
+        fonda(bot.rasm_yubor, yol, xabar)
+    gapir(xabar, rasm=yol)
 
 
 def yuz_qosh(ism, manba="veb"):
@@ -1506,10 +1580,16 @@ def chat_sozlamalari():
         "kamera": {"royxat": [{"nom": k.get("nom", ""), "ip": k.get("ip", ""), "kanal": k.get("kanal", "101"),
                                "login": k.get("login", "admin"), "kuzatilyapti": k.get("nom") in kuzatuvchilar,
                                "eshik": k is eshik_kamerasi()}
-                              for k in kameralar()],
+                              for k in SOZ.get("kameralar", []) if k.get("ip")],
                    "kuzatuv": bool(SOZ.get("kamera_kuzatuv")), "ovoz": bool(SOZ.get("kamera_ovoz")),
                    "yuz_eshik": bool(SOZ.get("yuz_eshik")), "yuz_eshik_och": bool(SOZ.get("yuz_eshik_och", True)),
-                   "yuz_ishlayapti": bool(qorovullar), "odamlar": _odamlar()},
+                   "yuz_ishlayapti": bool(qorovullar), "odamlar": _odamlar(),
+                   "eshik": ({"nom": eshik_qurilmasi()["nom"], "ip": eshik_qurilmasi()["ip"],
+                              "kanal": eshik_qurilmasi().get("kanal", "1"),
+                              "login": eshik_qurilmasi().get("login", "admin"),
+                              "raqam": eshik_qurilmasi().get("eshik_raqami", 1),
+                              "usul": eshik_qurilmasi().get("eshik_usul", "")} if eshik_qurilmasi() else None),
+                   "pin_qisqa": len(str(SOZ.get("telefon_pin") or "")) < 6},
         "mikrofon": {"holat": dict(MIK_HOLAT, oldin=int(time.time() - MIK_HOLAT["vaqt"])
                                    if MIK_HOLAT["vaqt"] else None),
                      "qurilmalar": [n for _, n in mikrofonlar()],
@@ -1526,6 +1606,13 @@ def _odamlar():
             return {ism: len(n) for ism, n in json.load(f).items()}
     except (OSError, ValueError):
         return {}
+
+
+def _eshik_kuzatuvini_avto_yoq():
+    """Eshik ulangan va kamida bitta yuz o'rgatilgan bo'lsa — eshik doim kuzatilsin
+    (foydalanuvchi o'zi o'chirmagan bo'lsa: yuz_eshik None — hali tanlanmagan)."""
+    if SOZ.get("yuz_eshik") is None and eshik_kamerasi() and _odamlar() and not qorovullar:
+        yuz_eshikni_yoq(True)
 
 
 def chat_sozlama_yoz(kalit, qiymat):
@@ -1582,6 +1669,32 @@ def chat_sozlama_yoz(kalit, qiymat):
         if not yol:
             return False, f"Ulanib bo'lmadi: {xato}."
         return True, f"✅ '{k['nom']}' ishlayapti!", {"rasm": kamera.nisbiy(yol)}
+    if kalit == "eshik_saqla" and isinstance(qiymat, dict):
+        ip = str(qiymat.get("ip", "")).strip().replace("http://", "").replace("https://", "").strip("/")
+        if not re.fullmatch(r"[\w.-]+", ip):
+            return False, "IP manzilni to'g'ri kiriting, masalan: 192.168.100.201"
+        eski = SOZ.get("eshik") or {}
+        eshik = {"nom": str(qiymat.get("nom") or "Eshik").strip()[:30], "ip": ip,
+                 "login": str(qiymat.get("login") or "admin").strip(),
+                 "parol": str(qiymat.get("parol") or "") or (eski.get("parol", "") if eski.get("ip") == ip else ""),
+                 "kanal": str(qiymat.get("kanal") or "1").strip(),
+                 "http_port": int(qiymat.get("http_port") or 80),
+                 "eshik_raqami": int(qiymat.get("eshik_raqami") or 1)}
+        sozlama_ozgartir("eshik", eshik, ayt=False)
+        ok, xato = kamera.rasm_ol(eshik)                  # darhol ulanishni tekshiramiz
+        if qorovullar or SOZ.get("yuz_eshik"):
+            yuz_eshikni_yoq(True)
+        if not ok:
+            return False, f"Eshik saqlandi, lekin ulanib bo'lmadi: {xato}."
+        _eshik_kuzatuvini_avto_yoq()
+        return True, "✅ Eshik ulandi va ishlayapti!", {"rasm": kamera.nisbiy(ok)}
+    if kalit == "eshik_ochir":
+        yuz_eshikni_yoq(False)
+        sozlama_ozgartir("eshik", {}, ayt=False)
+        return True, "Eshik qurilmasi o'chirildi."
+    if kalit == "eshik_skaner":
+        ok, xabar, yol = eshik_skaner(och=True)
+        return ok, xabar, ({"rasm": kamera.nisbiy(yol)} if yol else {})
     if kalit == "kamera_qidir":
         topilgan = kamera.sadp_qidir()
         if not topilgan:
@@ -1602,7 +1715,9 @@ def chat_sozlama_yoz(kalit, qiymat):
         ism = str(qiymat.get("ism") or "").strip()[:30]
         if not ism:
             return False, "Ismni kiriting."
-        return yuz_qosh(ism, str(qiymat.get("manba") or "veb"))
+        natija = yuz_qosh(ism, str(qiymat.get("manba") or "veb"))
+        _eshik_kuzatuvini_avto_yoq()
+        return natija
     if kalit == "yuz_ochir":
         ok = yuz.Tanuvchi.ol().ochir(str(qiymat))
         return ok, (f"{qiymat} o'chirildi." if ok else "Topilmadi.")
@@ -2394,6 +2509,9 @@ def bajar(b):
             gapir("Buni sozlay olmadim.")
 
     # ----- eshik, yuz, jonli kamera -----
+    elif bor(b, "skaner", "скан", "scan") or (bor(b, "yuz") and bor(b, "tekshir") and bor(b, "eshik")):
+        eshik_skaner_buyrugi()                            # "skanerla", "eshikni skanerla"
+
     elif ESHIK_OCH_RE.search(b) and not bor(b, "ochma", "kamera", "ko'rsat", "yop", "berk"):
         eshik_buyrugi()                                   # faqat aniq "eshikni och" iborasi
 
@@ -2756,6 +2874,7 @@ def miya():
     if SOZ.get("kamera_kuzatuv") and kameralar():
         print(f"📹 Kamera kuzatuvi davom etyapti: {kuzatuvni_yoq(True)} ta kamera")
     pin = str(SOZ.get("telefon_pin") or "0000")
+    himoya.ogohlantir = lambda matn: bot.yoz(matn) if bot and bot.egasi else None
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
     server.kamera_ol = lambda nom: next((k for k in kameralar() if k["nom"] == nom), None)
     threading.Thread(target=internetni_kuzat, daemon=True).start()

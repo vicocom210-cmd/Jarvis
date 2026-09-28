@@ -13,6 +13,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import arxiv
+import himoya
 
 PORT = 8770
 _bajaruvchi = None          # (matn) -> javob  — jarvis.py beradi
@@ -184,8 +185,9 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._javob(404, {"ok": False})
             return
-        if str(malumot.get("pin", "")) != _pin:
-            self._javob(403, {"ok": False, "xato": "PIN noto'g'ri"})
+        ok, xato = himoya.tekshir(self.client_address[0], malumot.get("pin", ""), _pin)
+        if not ok:                                   # taxmin qilib topishga qarshi bloklash bilan
+            self._javob(403, {"ok": False, "xato": xato})
             return
         matn = (malumot.get("matn") or "").strip()
         if not matn:

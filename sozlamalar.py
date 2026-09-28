@@ -35,7 +35,7 @@ STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
             "telefon_kanal": "", "shahar": "toshkent", "chat_avto": True,
             "groq_kalit": "", "mikrofon": "", "sezgirlik": 3,
             "kameralar": [], "kamera_kuzatuv": False, "kamera_ovoz": False,
-            "yuz_eshik": False, "yuz_eshik_och": True}
+            "yuz_eshik": None, "yuz_eshik_och": True}      # None — hali tanlanmagan (o'zi yoqiladi)
 
 
 def yukla():

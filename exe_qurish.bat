@@ -8,6 +8,7 @@ set PY="C:\Program Files (x86)\Python311-32\python.exe"
 if not exist modellar mkdir modellar
 curl -L -o modellar\face_detection_yunet_2023mar.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
 curl -L -o modellar\face_recognition_sface_2021dec.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+curl -L -o modellar\object_detection_nanodet_2022nov.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx
 %PY% -m PyInstaller --noconfirm --onefile --windowed --name Jarvis --icon jarvis.ico ^
   --add-data "chat.html;." --add-data "jarvis.png;." --add-data "modellar;modellar" --collect-data speech_recognition --collect-all uiautomation ^
   --collect-submodules shazamio --collect-all webview --hidden-import clr --hidden-import pyaudio jarvis.py

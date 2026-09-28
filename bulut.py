@@ -10,6 +10,8 @@ Kerak: pip install paho-mqtt   (sof python, 32-bitda ham o'rnatiladi)
 import json
 import threading
 
+import himoya
+
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
@@ -54,8 +56,9 @@ def ishga_tushir(kanal, pin, bajaruvchi):
             malumot = json.loads(xabar.payload.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return
-        if str(malumot.get("pin", "")) != str(pin):
-            cl.publish(reply_mavzu, json.dumps({"ok": False, "xato": "PIN"}))
+        ok, xato = himoya.tekshir("bulut", malumot.get("pin", ""), pin)
+        if not ok:                                   # taxmin qilib topishga qarshi bloklash bilan
+            cl.publish(reply_mavzu, json.dumps({"ok": False, "xato": xato}, ensure_ascii=False))
             return
         matn = (malumot.get("matn") or "").strip()
         if not matn:
