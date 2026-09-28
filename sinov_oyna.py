@@ -53,8 +53,8 @@ tekshir("sharni bosdi — yozish joyi (yonga surilmasin)", "mini_yoz")
 ui.put(("holat", "tinglash"))
 tekshir("'Jarvis' — o'rtada katta", "katta")
 ui.put(("holat", "kutish"))
-o.kutish_boshlandi = time.time() - 5
-o.mini_yozish = False
+kadr(2)                                  # xabar qabul qilinsin
+time.sleep(1.4)                          # kutishga o'tgach ~1,2 soniyada shar tepaga qaytadi
 tekshir("tugadi — yana tepada", "mini")
 pygame.quit()
 if xatolar:
