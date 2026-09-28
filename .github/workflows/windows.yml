@@ -44,6 +44,7 @@ jobs:
           $asos = "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models"
           Invoke-WebRequest "$asos/face_detection_yunet/face_detection_yunet_2023mar.onnx" -OutFile modellar\face_detection_yunet_2023mar.onnx
           Invoke-WebRequest "$asos/face_recognition_sface/face_recognition_sface_2021dec.onnx" -OutFile modellar\face_recognition_sface_2021dec.onnx
+          Invoke-WebRequest "$asos/object_detection_nanodet/object_detection_nanodet_2022nov.onnx" -OutFile modellar\object_detection_nanodet_2022nov.onnx
           Get-ChildItem modellar | Select-Object Name, Length
 
       - name: Belgi (ikonka) yasash

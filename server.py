@@ -31,6 +31,20 @@ def chat_sozla(qabul, holat_ol, sozlama_ol=None, sozlama_yoz=None):
     _chat_qabul, _holat_ol, _sozlama_ol, _sozlama_yoz = qabul, holat_ol, sozlama_ol, sozlama_yoz
 
 
+def _kamera_rasmi(nisbiy):
+    """Faqat kamera papkasi ichidagi .jpg — '../' bilan boshqa fayllarni o'qib bo'lmasin."""
+    import kamera
+    if not nisbiy.lower().endswith(".jpg"):
+        return None
+    ildizlar = (kamera.PAPKA, os.path.join(arxiv.sozlamalar.PAPKA, "kamera"))   # yangi va eski joy
+    for ildiz in ildizlar:
+        ildiz = os.path.realpath(ildiz)
+        fayl = os.path.realpath(os.path.join(ildiz, nisbiy.replace("/", os.sep)))
+        if os.path.commonpath([ildiz, fayl]) == ildiz and os.path.isfile(fayl):
+            return fayl
+    return None
+
+
 def _manba_yoli(nom):
     """Fayl yo'li — oddiy ishga tushirishda ham, EXE ichida ham (PyInstaller) ishlaydi."""
     asos = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -88,10 +102,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif yol.path == "/api/jonli":
             self._jonli(q.get("k", [""])[0])
         elif yol.path == "/api/rasm":
-            # faqat kamera papkasidagi .jpg (boshqa fayllarni o'qib bo'lmasin)
-            nom = os.path.basename(q.get("f", [""])[0])
-            fayl = os.path.join(arxiv.sozlamalar.PAPKA, "kamera", nom)
-            if not nom.lower().endswith(".jpg") or not os.path.isfile(fayl):
+            fayl = _kamera_rasmi(q.get("f", [""])[0])
+            if not fayl:
                 self._javob(404, {"ok": False})
                 return
             with open(fayl, "rb") as f:

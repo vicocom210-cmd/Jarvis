@@ -33,7 +33,8 @@ def yoz(kim, matn, manba="", rasm=None, jonli=None):
         _oxirgi_id = max(_oxirgi_id + 1, time.time_ns() // 1000)
         yozuv = {"id": _oxirgi_id, "vaqt": time.time(), "kim": kim, "matn": matn, "manba": manba}
         if rasm:
-            yozuv["rasm"] = os.path.basename(rasm)
+            import kamera
+            yozuv["rasm"] = kamera.nisbiy(rasm)       # Rasmlar\Jarvis\Kamera ichidagi yo'l
         if jonli:
             yozuv["jonli"] = jonli                   # chatda jonli video (kamera nomi)
         _songgi.append(yozuv)

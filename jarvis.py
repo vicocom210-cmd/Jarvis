@@ -1052,10 +1052,10 @@ def telefon_amal(b):
             fonda(bot.fayl_yubor, yol, "Telefon ekrani")
             gapir("Telefon ekranini yubordim.")
         else:
-            manzil = os.path.join(kompyuter.desktop_yoli(),
-                                  datetime.datetime.now().strftime("Telefon ekrani %H-%M-%S.png"))
+            manzil = kamera.jarvis_rasm_yoli(
+                "Telefon", datetime.datetime.now().strftime("Telefon ekrani %Y-%m-%d %H-%M-%S.png"))
             shutil.copy(yol, manzil)
-            gapir("Telefon ekrani ish stoliga saqlandi.")
+            gapir("Telefon ekrani Rasmlar papkasidagi Jarvis, Telefon papkasiga saqlandi.")
         return True
 
     if bor(b, "rasm", "surat", "foto", "video", "galere") and bor(
@@ -1103,8 +1103,7 @@ def telefon_ilova_nomi(gap):
 
 
 def _telefon_rasmlarini_kochir():
-    manzil = os.path.join(kompyuter.desktop_yoli(),
-                          datetime.datetime.now().strftime("Telefon rasmlari %Y-%m-%d"))
+    manzil = kamera.jarvis_rasm_yoli("Telefon", datetime.datetime.now().strftime("Telefon rasmlari %Y-%m-%d"))
     muvaffaqiyat, chiqish = telefon.fayllarni_olib_kel("/sdcard/DCIM/Camera", manzil)
     if muvaffaqiyat:
         gapir(f"Telefon rasmlari ko'chirildi. Papka nomi: {os.path.basename(manzil)}.")
@@ -1137,14 +1136,53 @@ def kameralar():
     return [k for k in SOZ.get("kameralar", []) if k.get("ip")]
 
 
+KAMERA_SONLARI = {"bir": 1, "birinchi": 1, "ikki": 2, "ikkinchi": 2, "uch": 3, "uchinchi": 3,
+                  "to'rt": 4, "tort": 4, "to'rtinchi": 4, "tortinchi": 4, "besh": 5, "beshinchi": 5,
+                  "olti": 6, "oltinchi": 6, "yetti": 7, "yettinchi": 7, "sakkiz": 8, "sakkizinchi": 8,
+                  "to'qqiz": 9, "to'qqizinchi": 9, "o'n": 10, "o'ninchi": 10,
+                  "один": 1, "два": 2, "три": 3, "четыре": 4, "пять": 5, "one": 1, "two": 2,
+                  "three": 3, "four": 4, "five": 5}
+
+
+def _kamera_raqami(b):
+    """'kamera 4', '4-kamera', 'to'rtinchi kamera', 'kamera to'rt' -> 4. Topilmasa None."""
+    son = r"(\d{1,3}|" + "|".join(sorted(map(re.escape, KAMERA_SONLARI), key=len, reverse=True)) + ")"
+    for naqsh in (r"(?:kamera|камера|camera)\w*\s*(?:raqam\w*\s*|№\s*|#\s*)?" + son
+                  + r"(?:ni|ning|ga|dan|da|dagi|chi|inchi|nchi)?\b",
+                  son + r"\s*-?\s*(?:chi|inchi|nchi|ninchi)?\s*(?:kamera|камера|camera)"):
+        m = re.search(naqsh, b)
+        if m:
+            q = m.group(1)
+            return int(q) if q.isdigit() else KAMERA_SONLARI.get(q)
+    return None
+
+
 def kamera_tanla(b):
-    """Gapda kamera nomi bo'lsa — o'sha ("hovlidagi kamera"), bo'lmasa birinchisi."""
+    """Gapdagi kamerani tanlaydi: aniq nomi ("hovli"), raqami ("kamera 4", "to'rtinchi kamera"),
+    bo'lmasa birinchisi. (Avval "kamera" so'zining o'zi mos kelib, boshqa kamera tanlanardi.)"""
     royxat = kameralar()
-    for k in royxat:
+    if not royxat:
+        return None
+    # 1) to'liq nom gapda bor — eng uzun nom birinchi ("Kamera 12" "Kamera 1"dan oldin)
+    for k in sorted(royxat, key=lambda k: -len(k.get("nom", ""))):
         nom = normallashtir(k.get("nom", ""))
-        if nom and (nom in b or nom[:max(4, len(nom) - 2)] in b):
+        if nom and re.search(r"(?<!\w)" + re.escape(nom) + r"(?!\d)", b):
             return k
-    return royxat[0] if royxat else None
+    # 2) raqam: nomida shu raqam bor kamera, bo'lmasa ro'yxatdagi tartib raqami
+    n = _kamera_raqami(b)
+    if n is not None:
+        for k in royxat:
+            if re.search(rf"(?<!\d){n}(?!\d)", k.get("nom", "")) or k.get("ip", "").endswith(f".{n}"):
+                return k
+        if 1 <= n <= len(royxat):
+            return royxat[n - 1]
+    # 3) nomdagi ma'noli so'z ("hovli", "eshik", "ko'cha") — umumiy "kamera" so'zi hisobga olinmaydi
+    for k in royxat:
+        for soz in normallashtir(k.get("nom", "")).split():
+            if len(soz) >= 4 and soz not in ("kamera", "camera", "камера") and not soz.isdigit() \
+                    and soz[:max(4, len(soz) - 2)] in b:
+                return k
+    return royxat[0]
 
 
 def uy_kamera_rasmi(b):
@@ -1170,17 +1208,24 @@ def uy_kamera_rasmi(b):
     gapir(matn, tarjima_qil=not tavsif, rasm=yol)
 
 
-def kamera_harakat(k, yol):
-    """Kuzatuvchi harakat sezdi: chatga va Telegram'ga rasm bilan xabar."""
-    tavsif = sun_iy.rasm_tahlil(yol, "Uy kamerasi harakat sezdi. Kim yoki nima harakatlanyapti?",
+def kamera_harakat(k, yol, soni=0):
+    """Kamerada odam paydo bo'ldi: kompyuterda jonli video o'zi ochiladi (chat yopiq bo'lsa ham),
+    chatga va Telegram'ga belgilangan rasm bilan xabar keladi."""
+    kim = f"{soni} ta odam" if soni > 1 else "odam"
+    if soni == 0:
+        kim = "harakat"                                     # odam modeli yo'q — eski usul
+    # Avval jonli videoni ochamiz — kutib o'tirmasdan, nima bo'layotganini darhol ko'rasiz
+    if chat_jarayon is None or chat_jarayon.poll() is not None:
+        chat_och(jonli=k["nom"])
+    tavsif = sun_iy.rasm_tahlil(yol, "Uy kamerasida odam paydo bo'ldi. Kim, nima qilyapti?",
                                 til()) if sun_iy.bormi() else None
-    matn = f"🚨 {k['nom']}: harakat sezildi! {datetime.datetime.now():%H:%M:%S}" + (f" — {tavsif}" if tavsif else "")
+    matn = f"🚨 {k['nom']}: {kim} ko'rindi! {datetime.datetime.now():%H:%M:%S}" + (f" — {tavsif}" if tavsif else "")
     print(matn)
-    arxiv.yoz("jarvis", matn, "kamera", rasm=yol)
+    arxiv.yoz("jarvis", matn, "kamera", rasm=yol, jonli=k["nom"])   # chat ochiq bo'lsa — jonli video o'zi chiqadi
     if bot and bot.egasi:
         bot.rasm_yubor(yol, matn)
     if SOZ.get("kamera_ovoz"):
-        gapir(f"Diqqat! {k['nom']} kamerasida harakat bor.", uzilmas=True)
+        gapir(f"Diqqat! {k['nom']} kamerasida {kim} bor.", uzilmas=True)
 
 
 def kuzatuvni_yoq(yoqilsin=True):
@@ -1380,11 +1425,12 @@ def _brauzerda_och(url):
     webbrowser.open(url)
 
 
-def chat_och(sozlama=False):
+def chat_och(sozlama=False, jonli=None):
     """Chat oynasini alohida dastur oynasi qilib ochadi (brauzer emas, internet shart emas).
     sozlama=True — darhol sozlamalar bo'limida. Oyna ochiq bo'lsa — qayta ochiladi (oldinga chiqadi)."""
     global chat_jarayon
-    url = f"http://127.0.0.1:{server.PORT}/chat" + ("?soz=1" if sozlama else "")
+    url = f"http://127.0.0.1:{server.PORT}/chat" + ("?soz=1" if sozlama else "") + \
+        (("&" if sozlama else "?") + "jonli=" + urllib.parse.quote(jonli) if jonli else "")
     if chat_jarayon is not None and chat_jarayon.poll() is None:
         try:
             chat_jarayon.terminate()                    # eski oynani yopib, yangisini ochamiz
@@ -1535,7 +1581,7 @@ def chat_sozlama_yoz(kalit, qiymat):
         yol, xato = kamera.rasm_ol(k)
         if not yol:
             return False, f"Ulanib bo'lmadi: {xato}."
-        return True, f"✅ '{k['nom']}' ishlayapti!", {"rasm": os.path.basename(yol)}
+        return True, f"✅ '{k['nom']}' ishlayapti!", {"rasm": kamera.nisbiy(yol)}
     if kalit == "kamera_qidir":
         topilgan = kamera.sadp_qidir()
         if not topilgan:
@@ -1670,10 +1716,10 @@ def kamera_rasmi():
         fonda(bot.fayl_yubor, yol, "Kamera surati")
         gapir("Kamera suratini yubordim.")
     else:
-        manzil = os.path.join(kompyuter.desktop_yoli(),
-                              datetime.datetime.now().strftime("Kamera %Y-%m-%d %H-%M-%S.jpg"))
+        manzil = kamera.jarvis_rasm_yoli(
+            "Veb-kamera", datetime.datetime.now().strftime("Kamera %Y-%m-%d %H-%M-%S.jpg"))
         shutil.copy(yol, manzil)
-        gapir("Kamera surati ish stoliga saqlandi.")
+        gapir("Kamera surati Rasmlar papkasidagi Jarvis papkasiga saqlandi.")
 
 
 def ekran_rasmi():
@@ -1688,10 +1734,10 @@ def ekran_rasmi():
         gapir("Ekran rasmini yuboryapman.")
         fonda(bot.fayl_yubor, yol, "Ekran rasmi")
     else:
-        manzil = os.path.join(kompyuter.desktop_yoli(),
-                              datetime.datetime.now().strftime("Ekran rasmi %Y-%m-%d %H-%M-%S.png"))
+        manzil = kamera.jarvis_rasm_yoli(
+            "Ekran", datetime.datetime.now().strftime("Ekran rasmi %Y-%m-%d %H-%M-%S.png"))
         shutil.copy(yol, manzil)
-        gapir("Ekran rasmi ish stoliga saqlandi.")
+        gapir("Ekran rasmi Rasmlar papkasidagi Jarvis, Ekran papkasiga saqlandi.")
 
 
 TIL_SOZLARI = {"ru": ("rus", "русск"), "en": ("ingliz", "english", "англий"),
@@ -2387,7 +2433,8 @@ def bajar(b):
         else:
             soni = kuzatuvni_yoq(True)
             qosh = "" if (bot and bot.egasi) else " Telegram ulanmagan — xabarlar faqat chatda ko'rinadi."
-            gapir(f"{soni} ta kamerada harakatni kuzatyapman. Kimdir harakatlansa, rasm bilan xabar beraman.{qosh}")
+            gapir(f"{soni} ta kamerani kuzatyapman. Odam paydo bo'lsa, jonli videoni ochaman va rasm bilan xabar beraman."
+                  f" Mushuk, soya, shamol kabi narsalarga e'tibor bermayman.{qosh}")
 
     elif kameralar() and (bor(b, "uy kamera", "hovli", "eshik old", "ko'cha", "hikvision", "kamerada",
                                "uyda kim", "uyda nima", "kamerani ko'rsat", "kamerani och", "kamera rasm",
@@ -2800,7 +2847,9 @@ if __name__ == "__main__":
             except Exception as xato:
                 print(f"  - {ixtiyoriy}: {xato}")
         yuz.Tanuvchi.ol()                # yuz tanish modellari EXE ichida va ishlaydi
-        print("  + yuz tanish modellari")
+        import odam
+        odam.OdamAniqlagich.ol()
+        print("  + yuz tanish va odamni aniqlash modellari")
         print(f"Jarvis tayyor. Barcha modullar yuklandi. FLAC: {flac}")
         sys.exit(0)
     if os.name == "nt":                  # faqat bitta Jarvis ishlasin (mikrofon va port to'qnashmasin)

@@ -23,6 +23,9 @@ MODELLAR = {
     "tanish": ("face_recognition_sface_2021dec.onnx",
                "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/"
                "face_recognition_sface/face_recognition_sface_2021dec.onnx"),
+    "odam": ("object_detection_nanodet_2022nov.onnx",             # odamni aniqlash (odam.py)
+             "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/"
+             "object_detection_nanodet/object_detection_nanodet_2022nov.onnx"),
 }
 MODEL_PAPKA = os.path.join(sozlamalar.PAPKA, "modellar")
 BAZA_FAYL = os.path.join(sozlamalar.PAPKA, "yuzlar.json")

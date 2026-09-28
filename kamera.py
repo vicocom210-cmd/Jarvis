@@ -18,9 +18,34 @@ import time
 import urllib.parse
 import urllib.request
 
-import sozlamalar
 
-PAPKA = os.path.join(sozlamalar.PAPKA, "kamera")      # olingan rasmlar (chatda ko'rinadi)
+def rasmlar_papkasi():
+    """Windows'ning "Rasmlar" (Pictures) papkasi — OneDrive'ga ko'chirilgan bo'lsa ham to'g'ri topadi."""
+    if os.name == "nt":
+        import ctypes
+        joy = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.shell32.SHGetFolderPathW(None, 0x27, None, 0, joy) == 0:   # CSIDL_MYPICTURES
+            return joy.value
+    return os.path.join(os.path.expanduser("~"), "Pictures")
+
+
+# Kamera rasmlari: Rasmlar\Jarvis\Kamera\2026-09-28\Hovli-....jpg (ish stolini to'ldirmaydi)
+PAPKA = os.path.join(rasmlar_papkasi(), "Jarvis", "Kamera")
+
+
+def jarvis_rasm_yoli(bolim, nom):
+    """Jarvis olgan boshqa rasmlar uchun: Rasmlar\Jarvis\<bolim>\<nom> (papka o'zi yaratiladi)."""
+    papka = os.path.join(rasmlar_papkasi(), "Jarvis", bolim)
+    os.makedirs(papka, exist_ok=True)
+    return os.path.join(papka, nom)
+
+
+def nisbiy(yol):
+    """Chat uchun: kamera papkasiga nisbatan yo'l ('2026-09-28/Hovli-...jpg')."""
+    try:
+        return os.path.relpath(yol, PAPKA).replace(os.sep, "/")
+    except ValueError:
+        return os.path.basename(yol)
 
 
 def _kanal(k, yengil=False):
@@ -41,9 +66,11 @@ def rtsp_manzil(k, yengil=False):
 
 
 def _yangi_yol(k, qoshimcha=""):
-    os.makedirs(PAPKA, exist_ok=True)
+    hozir = datetime.datetime.now()
+    papka = os.path.join(PAPKA, f"{hozir:%Y-%m-%d}")                 # har kun alohida papka
+    os.makedirs(papka, exist_ok=True)
     nom = "".join(c for c in str(k.get("nom") or "kamera") if c.isalnum()) or "kamera"
-    return os.path.join(PAPKA, f"{nom}-{datetime.datetime.now():%Y%m%d-%H%M%S}{qoshimcha}.jpg")
+    return os.path.join(papka, f"{nom}-{hozir:%H-%M-%S}-{hozir.microsecond // 1000:03d}{qoshimcha}.jpg")
 
 
 def _isapi_rasm(k, timeout=8):
@@ -113,12 +140,15 @@ def rasm_ol(k):
 
 # ---------- HARAKATNI KUZATISH ----------
 class Kuzatuvchi:
-    """Kameraning yengil oqimidan harakatni sezadi. Harakat bo'lsa — rasm bilan xabar beradi
-    (har 60 soniyada ko'pi bilan bir marta, xabarlar ko'payib ketmasin)."""
+    """Kamerada ODAM paydo bo'lsa xabar beradi (shunchaki harakat emas).
+    1) Arzon harakat tekshiruvi — kadr o'zgardimi;  2) o'zgargan bo'lsa neyron tarmoq (odam.py)
+    u yerda odam bormi tekshiradi;  3) odam ketma-ket 2 kadrda ko'rinsa — rasm bilan xabar.
+    Mushuk, barg, soya, yorug'lik — xabar bermaydi. Har kamera uchun 60 soniyada ko'pi bilan bir xabar."""
 
-    def __init__(self, k, harakat_bor, holat_xabari=print, sezgirlik=0.012, tanaffus=60):
+    def __init__(self, k, harakat_bor, holat_xabari=print, sezgirlik=0.012, tanaffus=60, odam_ishonch=0.55):
         self.k = k
-        self.harakat_bor = harakat_bor            # (kamera, rasm_yoli) -> None
+        self.harakat_bor = harakat_bor            # (kamera, rasm_yoli, odamlar_soni) -> None
+        self.odam_ishonch = odam_ishonch
         self.holat_xabari = holat_xabari
         self.sezgirlik = sezgirlik                # kadrning qancha qismi o'zgarsa — harakat
         self.tanaffus = tanaffus
@@ -136,7 +166,14 @@ class Kuzatuvchi:
             self.holat_xabari("Kuzatish uchun opencv-python kerak")
             return
         os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+        try:
+            import odam
+            aniqlagich = odam.OdamAniqlagich.ol()
+        except Exception as xato:                  # model yo'q — eski usul (harakat)
+            print(f"(Odamni aniqlash modeli yuklanmadi: {xato}) — harakat bo'yicha xabar beraman")
+            aniqlagich = None
         oxirgi_xabar = 0.0
+        ketma = 0                                  # odam ketma-ket nechta kadrda ko'rindi
         while self.ishlasin:
             video = cv2.VideoCapture(rtsp_manzil(self.k, yengil=True), cv2.CAP_FFMPEG)
             if not video.isOpened():
@@ -163,14 +200,28 @@ class Kuzatuvchi:
                     continue
                 oxirgi_tahlil = time.time()
                 ulush, fon = harakat_ulushi(kadr, fon, cv2)
-                if ulush >= self.sezgirlik and time.time() - oxirgi_xabar > self.tanaffus:
-                    oxirgi_xabar = time.time()
-                    yol = _yangi_yol(self.k, "-harakat")
-                    cv2.imwrite(yol, kadr)
-                    try:
-                        self.harakat_bor(self.k, yol)
-                    except Exception as xato:
-                        print(f"(Harakat xabari xatosi: {xato})")
+                if ulush < self.sezgirlik:
+                    ketma = 0
+                    continue
+                if time.time() - oxirgi_xabar <= self.tanaffus:
+                    continue
+                if aniqlagich is None:
+                    odamlar, belgilangan = [None], kadr
+                else:
+                    odamlar = aniqlagich.odamlar(kadr, self.odam_ishonch)
+                    ketma = ketma + 1 if odamlar else 0
+                    if ketma < 2:                       # bitta kadrdagi xato ko'rinish emas — ikkitasida
+                        continue
+                    import odam
+                    belgilangan = odam.belgila(kadr, odamlar)
+                oxirgi_xabar = time.time()
+                ketma = 0
+                yol = _yangi_yol(self.k, "-odam" if aniqlagich else "-harakat")
+                cv2.imwrite(yol, belgilangan)
+                try:
+                    self.harakat_bor(self.k, yol, len(odamlar) if aniqlagich else 0)
+                except Exception as xato:
+                    print(f"(Ogohlantirish xatosi: {xato})")
             video.release()
 
 

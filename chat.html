@@ -465,8 +465,8 @@ function kameraBolimi(ich, K){
       r.appendChild(t); r.appendChild(tb); qn.appendChild(r); } };
   if(K.royxat.length){
     for(const [kalit,sarl,izoh,qiymat] of [
-        ['kamera_kuzatuv','Harakatni kuzatish',"Kimdir harakatlansa — Telegram va chatga rasm bilan xabar (AI kim ekanini ham aytadi)",K.kuzatuv],
-        ['kamera_ovoz','Ovoz bilan ogohlantirish','Harakat bo\'lsa, Jarvis ovoz chiqarib aytadi',K.ovoz]]){
+        ['kamera_kuzatuv','Odam paydo bo\'lsa ogohlantirish',"Faqat ODAM ko'rinsa (mushuk, soya, shamol emas): kompyuterda jonli video o'zi ochiladi, Telegram va chatga belgilangan rasm keladi",K.kuzatuv],
+        ['kamera_ovoz','Ovoz bilan ogohlantirish','Odam ko\'rinsa, Jarvis ovoz chiqarib aytadi',K.ovoz]]){
       const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','',sarl)); t.appendChild(matnli('small','',izoh));
       r.appendChild(t); r.appendChild(almashtirgich(qiymat,kalit)); b.appendChild(r); }
     b.appendChild(e('div','izoh',"🎤 Buyruqlar: <b>\"kamerani ko'rsat\"</b>, <b>\"kamerani jonli ko'rsat\"</b>, <b>\"eshikni och\"</b>, "+
