@@ -141,6 +141,15 @@ open class MainActivity : android.app.Activity() {
         fun panelYop() {
             asosiy.post { finish() }
         }
+
+        // Kompyutersiz: kameradan to'g'ridan-to'g'ri rasm (uy Wi-Fi). Natija window.kameraJavob(id, json) ga
+        @JavascriptInterface
+        fun kameraRasm(id: Int, ip: String, port: Int, login: String, parol: String, kanal: String) {
+            Thread {
+                val json = Kamera.rasm(ip, if (port > 0) port else 80, login.ifBlank { "admin" }, parol, kanal)
+                asosiy.post { web.evaluateJavascript("window.kameraJavob && window.kameraJavob($id, $json)", null) }
+            }.start()
+        }
     }
 
     private fun boshlaTinglash() {

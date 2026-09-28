@@ -1845,7 +1845,8 @@ def telefon_kamera_amali(amal, m):
         return {"ok": True, "versiya": VERSIYA, "eshik": eshik["nom"] if eshik else None,
                 "kameralar": [{"nom": k["nom"], "eshik": bool(eshik and k.get("ip") == eshik.get("ip")),
                                "ip": k.get("ip", ""), "login": k.get("login", "admin"),
-                               "kanal": k.get("kanal", "1"), "ozgartirsa": not k.get("eshik")}   # parol yuborilmaydi
+                               "kanal": k.get("kanal", "1"), "http_port": k.get("http_port", 80),
+                               "ozgartirsa": not k.get("eshik")}   # parol bu yerda yuborilmaydi
                               for k in kameralar()]}
     if amal == "rasm":
         k = next((x for x in kameralar() if x["nom"] == m.get("nom")), None)
@@ -1868,10 +1869,14 @@ def telefon_kamera_amali(amal, m):
             jpg = open(yol, "rb").read()
             natija["rasm"] = base64.b64encode(jpg).decode()
         return natija
-    if amal in ("qosh", "ochir", "sina", "qidir"):              # kamera qo'shish/o'zgartirish telefondan
+    if amal in ("qosh", "ochir", "sina", "qidir", "sinxron"):   # kamera qo'shish/o'zgartirish telefondan
         if len(str(SOZ.get("telefon_pin") or "")) < 6:
             return {"ok": False, "xato": "Xavfsizlik uchun PIN kamida 6 raqam bo'lsin. Kompyuterdagi chat "
                                          "sozlamalarida PIN'ni almashtiring, keyin ilovada ham kiriting."}
+        if amal == "sinxron":       # kompyuter o'chiq bo'lsa ham telefon kameralarni ko'rsin (faqat uy Wi-Fi, PIN>=6)
+            return {"ok": True, "kameralar": [
+                {"nom": k["nom"], "ip": k.get("ip", ""), "login": k.get("login", "admin"), "parol": k.get("parol", ""),
+                 "kanal": k.get("kanal", "1"), "http_port": k.get("http_port", 80)} for k in kameralar()]}
         if amal == "qidir":
             ok, xabar, qosh = chat_sozlama_yoz("kamera_qidir", 1)
             return {"ok": ok, "xabar": xabar, "topilgan": qosh.get("topilgan", [])}
