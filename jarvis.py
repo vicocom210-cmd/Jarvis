@@ -1929,7 +1929,9 @@ def chat_sozlama_yoz(kalit, qiymat):
         return True, "Telegram uzildi. Qayta ulash uchun yangi kod chiqadi."
     if kalit == "groq_kalit":
         qiymat = str(qiymat or "").strip()
-        if qiymat and not qiymat.startswith("gsk_"):
+        if not qiymat:
+            return False, "Avval kalitni maydonga qo'ying (Ctrl+V), keyin Ulash'ni bosing."
+        if not qiymat.startswith("gsk_"):
             return False, "Groq kaliti 'gsk_' bilan boshlanadi. console.groq.com dan oling."
         sozlama_ozgartir("groq_kalit", qiymat, ayt=False)
         if qiymat:
@@ -1939,13 +1941,27 @@ def chat_sozlama_yoz(kalit, qiymat):
         return True, "AI kaliti o'chirildi."
     if kalit == "claude_kalit":
         qiymat = str(qiymat or "").strip()
-        if qiymat and not qiymat.startswith("sk-ant-"):
+        if not qiymat:                                    # bo'sh maydon bilan "Ulash" — o'chirmaymiz
+            return False, "Avval kalitni maydonga qo'ying (Ctrl+V), keyin Ulash'ni bosing."
+        if qiymat == "__ochir__":
+            qiymat = ""
+        elif not qiymat.startswith("sk-ant-"):
             return False, "Claude kaliti 'sk-ant-' bilan boshlanadi. console.anthropic.com dan oling."
+        tekshiruv = ""
+        if qiymat:                                        # kalitni darhol tekshiramiz (bepul, token sarflanmaydi)
+            try:
+                import anthropic
+                anthropic.Anthropic(api_key=qiymat, max_retries=0, timeout=15.0).models.list(limit=1)
+                tekshiruv = " ✅ Kalit tekshirildi — ishlayapti."
+            except Exception as xato:
+                if type(xato).__name__ in ("AuthenticationError", "PermissionDeniedError"):
+                    return False, "Kalit noto'g'ri yoki o'chirilgan — Console'dan qayta nusxalang yoki yangisini yarating."
+                tekshiruv = " (Kalitni hozir tekshirib bo'lmadi — internetni tekshiring.)"
         sozlama_ozgartir("claude_kalit", qiymat, ayt=False)
         if qiymat:
             os.environ["ANTHROPIC_API_KEY"] = qiymat
             sun_iy.claude_xato = ""
-            return True, "Claude ulandi. Savol va buyruqlar endi Claude'ga boradi, rasmlar — bepul AI'ga."
+            return True, "Claude ulandi. Savol va buyruqlar endi Claude'ga boradi, rasmlar — bepul AI'ga." + tekshiruv
         os.environ.pop("ANTHROPIC_API_KEY", None)
         return True, "Claude o'chirildi — endi faqat bepul AI ishlaydi."
     if kalit == "claude_model" and qiymat in sun_iy.CLAUDE_MODELLAR:

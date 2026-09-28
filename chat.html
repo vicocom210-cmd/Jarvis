@@ -717,7 +717,7 @@ async function sozlamalarniYukla(){
   if(S.ai.claude){ const mq=tanlovlar(Object.entries(S.ai.claude_modellar), S.ai.claude_model, 'claude_model'); mq.style.marginTop='12px';
     b.appendChild(mq);
     const o=matnli('button','tugma ikkinchi',"Claude'ni o'chirish"); o.style.marginTop='12px';
-    o.onclick=()=>{ if(confirm("Claude o'chirilsinmi? Faqat bepul AI qoladi.")) sozYoz('claude_kalit',''); }; b.appendChild(o); }
+    o.onclick=()=>{ if(confirm("Claude o'chirilsinmi? Faqat bepul AI qoladi.")) sozYoz('claude_kalit','__ochir__'); }; b.appendChild(o); }
   ich.appendChild(b);
 
   telegramAkkauntBolimi(ich, S.tga);
