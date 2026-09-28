@@ -221,6 +221,8 @@ def tashxis(k, parol_sinalsin=True):
         pass
     if not parol_sinalsin:                               # hozirgina rad etildi — yana urinib bloklatmaymiz
         qatorlar.append("❌ Kamera login yoki parolni qabul qilmadi")
+        qatorlar.append("💡 Telefondan shu parol bilan kirsa bo'ladimi? Bo'lsa — kamera bu kompyuterni "
+                        "bloklagan: kamerani o'chirib-yoqing")
         return qatorlar
     try:
         kod, tana = _isapi(k, "/ISAPI/System/deviceInfo", timeout=6)
@@ -270,7 +272,9 @@ def parol_izla(k, nomzodlar, eng_kop=3):
     return None
 
 
-PAROL_MASLAHAT = ("Bu kameraning paroli boshqasinikidan farq qilishi mumkin: brauzerda http://{ip} ni ochib, "
+PAROL_MASLAHAT = ("Agar TELEFONDAN shu parol bilan kira olsangiz — parol to'g'ri, kamera shu kompyuterni "
+                  "vaqtincha bloklagan: kamerani tokdan chiqarib qayta ulang va bir marta 'Sinash'ni bosing. "
+                  "Aks holda: bu kameraning paroli boshqasinikidan farq qilishi mumkin: brauzerda http://{ip} ni ochib, "
                   "shu login-parol bilan kirib ko'ring. Parol — kamera faollashtirilganda qo'yilgan parol yoki "
                   "kamera yorlig'idagi 6 ta katta harfli tasdiqlash kodi (Verification code). "
                   "To'g'ri parolni ✏️ tugmasi bilan kiriting")
@@ -374,7 +378,9 @@ class Kuzatuvchi:
                 except BloklanganXato as xato:
                     sabab, kutish = str(xato), 1800     # bloklangan — urinish blokni uzaytiradi
                 except PermissionError as xato:
-                    sabab, kutish = str(xato), max(kutish, 600)   # parol xato — tez-tez urinsak bloklaydi
+                    # parol xato YOKI kamera bu kompyuterni jimgina bloklagan — blok (~30 daq.) tugashini
+                    # kutamiz: har urinish blokni yangilab turmasin
+                    sabab, kutish = str(xato), 2100
                 except Exception:
                     pass
                 if sabab != oxirgi_sabab:               # bir xil xabarni qayta-qayta chiqarmaymiz
