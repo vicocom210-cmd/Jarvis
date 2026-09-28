@@ -1143,6 +1143,28 @@ def kameralar():
     return royxat
 
 
+def _parolni_izla(k):
+    """Kamera paroli xato bo'lsa — boshqa saqlangan kameralar/eshik parolini sinab ko'radi.
+    Mos kelsa sozlamaga yozadi va yangilangan kamera sozlamasini qaytaradi, bo'lmasa None."""
+    boshqalar = [x for x in SOZ.get("kameralar", []) if x.get("ip") and x.get("nom") != k.get("nom")]
+    if SOZ.get("eshik", {}).get("ip") and not k.get("eshik"):
+        boshqalar.append(SOZ["eshik"])
+    juft = kamera.parol_izla(k, [(x.get("login"), x.get("parol")) for x in boshqalar])
+    if not juft:
+        return None
+    login, parol = juft
+    if k.get("eshik") and SOZ.get("eshik", {}).get("ip") == k.get("ip"):
+        sozlama_ozgartir("eshik", dict(SOZ["eshik"], login=login, parol=parol), ayt=False)
+    else:
+        royxat = [dict(x, login=login, parol=parol) if x.get("nom") == k.get("nom") else x
+                  for x in SOZ.get("kameralar", [])]
+        sozlama_ozgartir("kameralar", royxat, ayt=False)
+        if k.get("nom") in kuzatuvchilar:
+            kuzatuvni_yoq(True)                               # kuzatuv yangi parol bilan qayta boshlansin
+    print(f"(Kamera '{k.get('nom')}' paroli boshqa kameranikiga mos keldi — saqlandi)")
+    return dict(k, login=login, parol=parol)
+
+
 def eshik_qurilmasi():
     """Chatdagi 'Eshik' bo'limida qo'shilgan domofon/eshik kamerasi (bo'lmasa None)."""
     e = SOZ.get("eshik") or {}
@@ -1672,9 +1694,17 @@ def chat_sozlama_yoz(kalit, qiymat):
         if not k:
             return False, "Kamera topilmadi."
         yol, xato = kamera.rasm_ol(k)
+        if not yol and "noto'g'ri" in (xato or ""):
+            topildi = _parolni_izla(k)                        # boshqa kameralarning paroli mos kelmasmikan
+            if topildi:
+                k = topildi
+                yol, xato = kamera.rasm_ol(k)
+                if yol:
+                    return True, (f"✅ '{k['nom']}' ishlayapti! Paroli boshqa kameranikiga mos keldi — "
+                                  "o'zim saqlab qo'ydim."), {"rasm": kamera.nisbiy(yol)}
         if not yol:
             try:
-                tafsilot = kamera.tashxis(k)
+                tafsilot = kamera.tashxis(k, parol_sinalsin="noto'g'ri" not in (xato or ""))
             except Exception as xato_:
                 tafsilot = [f"(tekshiruv xatosi: {xato_})"]
             print(f"Kamera tekshiruvi ({k['nom']}, {k.get('ip')}):\n  " + "\n  ".join(tafsilot))

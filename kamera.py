@@ -193,7 +193,7 @@ def _isapi_rasm(k, timeout=8):
     return None
 
 
-def tashxis(k):
+def tashxis(k, parol_sinalsin=True):
     """Kamera nega ulanmayapti — bosqichma-bosqich tekshiradi (parol bilan faqat BIR urinish).
     Odam tushunadigan qatorlar ro'yxati."""
     import socket
@@ -219,6 +219,9 @@ def tashxis(k):
         qatorlar.append(f"ℹ️ Kamera so'raydigan kirish turi: {', '.join(turlari) or 'noma`lum'} (HTTP {xato.code})")
     except OSError:
         pass
+    if not parol_sinalsin:                               # hozirgina rad etildi — yana urinib bloklatmaymiz
+        qatorlar.append("❌ Kamera login yoki parolni qabul qilmadi")
+        return qatorlar
     try:
         kod, tana = _isapi(k, "/ISAPI/System/deviceInfo", timeout=6)
         matn = tana.decode("utf-8", "ignore")
@@ -237,6 +240,34 @@ def tashxis(k):
     except (OSError, ValueError) as xato:
         qatorlar.append(f"❌ So'rov bajarilmadi: {xato}")
     return qatorlar
+
+
+def parol_izla(k, nomzodlar, eng_kop=3):
+    """Parol xato bo'lsa — boshqa kameralarda ishlagan (login, parol) juftlarini EHTIYOTKORLIK bilan
+    sinaydi: har biriga bitta urinish, ko'pi bilan 3 ta, kamera bloklashga yaqin qolsa — to'xtaydi.
+    Topilgan (login, parol) yoki None."""
+    joriy = (str(k.get("login") or "admin").strip(), str(k.get("parol") or ""))
+    korilgan = {joriy}
+    urinishlar = 0
+    for login, parol in nomzodlar:
+        juft = (str(login or "admin").strip(), str(parol or ""))
+        if juft in korilgan or not juft[1]:
+            continue
+        korilgan.add(juft)
+        if urinishlar >= eng_kop:
+            break
+        urinishlar += 1
+        try:
+            kod, tana = _isapi(dict(k, login=juft[0], parol=juft[1]), "/ISAPI/System/deviceInfo", timeout=6)
+        except (OSError, ValueError):
+            return None
+        if kod == 200:
+            return juft
+        matn = tana.decode("utf-8", "ignore")
+        qoldi = re.search(r"<retryLoginTime>\s*(\d+)", matn)
+        if _bloklanganmi(matn) or (qoldi and int(qoldi.group(1)) <= 2):
+            break                                       # kamerani bloklatib qo'ymaymiz
+    return None
 
 
 PAROL_MASLAHAT = ("Bu kameraning paroli boshqasinikidan farq qilishi mumkin: brauzerda http://{ip} ni ochib, "
@@ -275,7 +306,9 @@ def rasm_ol(k):
     except BloklanganXato as xato:
         return None, str(xato)                       # RTSP ham sinalsa — blok uzayadi
     except PermissionError as xato:
-        malumot, kirish_xato = None, str(xato)       # ba'zi kameralarda ISAPI yopiq, RTSP ishlaydi
+        if "noto'g'ri" in str(xato):                 # parol xato — RTSP ham rad etadi, bekorga urinmaymiz
+            return None, f"{xato}. " + PAROL_MASLAHAT.format(ip=k["ip"])
+        malumot, kirish_xato = None, str(xato)       # ISAPI'ga ruxsat yo'q (403) — RTSP ishlashi mumkin
     yol = _yangi_yol(k)
     if malumot:
         with open(yol, "wb") as f:
