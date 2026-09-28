@@ -25,6 +25,7 @@ _sozlama_ol = None          # () -> dict  — chatdagi sozlamalar bo'limi uchun
 _sozlama_yoz = None         # (kalit, qiymat) -> (ok, xabar)
 internet_bor = True         # jarvis.py kuzatib turadi — chat oynasida ko'rsatiladi
 kamera_ol = None            # (nom) -> kamera sozlamasi  — jonli video uchun (jarvis.py beradi)
+versiya = ""                # jarvis.py beradi (eski nusxani aniqlash uchun)
 tel_amal = None             # (amal, malumot) -> dict — telefon ilovasining Kamera bo'limi (jarvis.py beradi)
 
 
@@ -79,7 +80,7 @@ class _Handler(BaseHTTPRequestHandler):
         yol = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(yol.query)
         if yol.path.startswith("/holat"):
-            self._javob(200, {"ok": True, "nom": "Jarvis kompyuter"})
+            self._javob(200, {"ok": True, "nom": "Jarvis kompyuter", "versiya": versiya})
             return
         if not (yol.path == "/chat" or yol.path.startswith("/api/")):
             self._javob(404, {"ok": False})

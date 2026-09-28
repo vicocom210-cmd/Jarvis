@@ -164,7 +164,7 @@
 <body>
 <div class="aura"></div>
 <div class="qatlam">
-  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.3</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
+  <header><div class="logo">J A R V I S <span style="font-size:11px;letter-spacing:1px;-webkit-text-fill-color:#7f93b3">v2.4</span></div><div class="gear" onclick="sozlamaOch()">⚙</div></header>
   <div class="tablar2">
     <div class="tab2 faol" id="tabBuyruq" onclick="bolimTanla('buyruq')">💬 Buyruqlar</div>
     <div class="tab2" id="tabKamera" onclick="bolimTanla('kamera')">📹 Kamera</div>
@@ -261,7 +261,7 @@
       <div class="izoh" id="s-pin-iz">PIN kod — kompyuterdagi Jarvis chat sozlamalaridagi PIN. Eshikni ochish uchun kamida 6 raqam bo'lishi kerak.</div>
     </div>
     <button class="knop" id="s-saqla" onclick="sozlamaSaqla()">Saqlash</button>
-    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.3</div>
+    <div class="izoh" style="text-align:center;margin-top:6px">Jarvis v2.4</div>
   </div>
 </div>
 
@@ -474,6 +474,7 @@ async function kameraYukla(){
   if(d && d.ok){
     uyda=true; localStorage.setItem('kameralar', JSON.stringify(d));
     holat.textContent='🏠 Uy Wi-Fi — jonli ko\'rish mumkin. Kamerani bosing.';
+    if(!d.versiya){ holat.className='kam-izoh ogoh'; holat.textContent=ESKI_KOMP; }
   } else if(d && d.xato){
     holat.className='kam-izoh ogoh'; holat.textContent='⚠ '+d.xato; return;
   } else {
@@ -502,6 +503,9 @@ async function kameraYukla(){
 }
 // ---- Kamera qo'shish / o'zgartirish (faqat uy Wi-Fi'da: parol ochiq bulutdan o'tmasin) ----
 let tahrirNom=null;
+const ESKI_KOMP="⚠ Kompyuterdagi Jarvis ESKI versiya — kamera qo'shish/o'zgartirish ishlamaydi. "+
+  "Kompyuterda yangi Jarvis Setup'ni o'rnating, eski Jarvis'ni (jarvis.bat / Python oynasi) yoping va Jarvis'ni qayta oching.";
+function eskimi(d){ return d && /Noma.lum amal/.test(d.xato||''); }
 function $(id){ return document.getElementById(id); }
 function qoshOch(k){
   if(!uyda){ const h=$('kamHolat'); h.className='kam-izoh ogoh';
@@ -524,7 +528,7 @@ function kqNatija(matn, xato, rasm, tafsilot){ const n=$('kqNatija'); n.innerHTM
 async function tarmoqQidir(){ const t=$('topilganlar'); t.innerHTML=''; t.appendChild(el('div','kam-izoh','⏳ Qidiryapman (3 soniya)...'));
   let d; try{ d=await telSorov('qidir',{},12); }catch(e){ d={ok:false,xato:"Kompyuterga ulanib bo'lmadi"}; }
   t.innerHTML='';
-  if(!d.ok){ t.appendChild(el('div','kam-izoh qizil','⚠ '+(d.xato||d.xabar))); return; }
+  if(!d.ok){ t.appendChild(el('div','kam-izoh qizil',eskimi(d)?ESKI_KOMP:'⚠ '+(d.xato||d.xabar))); return; }
   if(d.xabar && d.xabar.indexOf('⚠')>=0) t.appendChild(el('div','kam-izoh ogoh',d.xabar));
   for(const q of d.topilgan||[]){ const b=el('div','topilgan');
     b.innerHTML='<b></b><br><span></span>'; b.querySelector('b').textContent='📷 '+q.ip+(q.toqnashuv?'  ⚠️ IP to\'qnashuvi':'');
@@ -540,12 +544,13 @@ async function kameraSaqla(){
   const b=$('kqSaqla'); b.disabled=true; kqNatija('⏳ Saqlayapman va kameraga ulanyapman...');
   let d; try{ d=await telSorov('qosh',q,40); }catch(e){ d={ok:false,xato:"Kompyuterga ulanib bo'lmadi"}; }
   b.disabled=false;
+  if(eskimi(d)){ kqNatija(ESKI_KOMP, true); return; }
   kqNatija(d.xabar||d.xato, !d.ok, d.rasm, d.tafsilot);
   if(d.ok || d.saqlandi){ tahrirNom=d.nom||q.nom; $('kq-nom').value=tahrirNom; $('kq-nom').disabled=true; $('kq-parol').value='';
     $('kqOchir').classList.remove('yashir'); $('qoshSarl').textContent='✏️ '+tahrirNom; kameraRoyxatYangila(); } }
 async function kameraOchir(){ if(!tahrirNom || !confirm(tahrirNom+" kamerasini o'chiraymi?")) return;
   let d; try{ d=await telSorov('ochir',{nom:tahrirNom}); }catch(e){ d={ok:false,xato:"Kompyuterga ulanib bo'lmadi"}; }
-  if(d.ok){ qoshYop(); kameraYukla(); } else kqNatija(d.xato||d.xabar, true); }
+  if(d.ok){ qoshYop(); kameraYukla(); } else kqNatija(eskimi(d)?ESKI_KOMP:(d.xato||d.xabar), true); }
 async function kameraRoyxatYangila(){ const ochiq=!$('qoshKarta').classList.contains('yashir');
   await kameraYukla(); if(ochiq){ $('qoshKarta').classList.remove('yashir'); $('qoshOchBtn').classList.add('yashir'); } }
 

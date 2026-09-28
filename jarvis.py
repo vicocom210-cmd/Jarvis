@@ -1842,7 +1842,7 @@ def telefon_kamera_amali(amal, m):
     import base64
     eshik = eshik_kamerasi()
     if amal == "kameralar":
-        return {"ok": True, "eshik": eshik["nom"] if eshik else None,
+        return {"ok": True, "versiya": VERSIYA, "eshik": eshik["nom"] if eshik else None,
                 "kameralar": [{"nom": k["nom"], "eshik": bool(eshik and k.get("ip") == eshik.get("ip")),
                                "ip": k.get("ip", ""), "login": k.get("login", "admin"),
                                "kanal": k.get("kanal", "1"), "ozgartirsa": not k.get("eshik")}   # parol yuborilmaydi
@@ -1909,6 +1909,49 @@ def telefon_kamera_amali(amal, m):
             javob["saqlandi"] = True
         return javob
     return {"ok": False, "xato": "Noma'lum amal"}
+
+
+VERSIYA = "3.1"          # telefon ilovasi shu orqali kompyuterdagi Jarvis yangi-eskiligini biladi
+
+
+def _ishlayotgan_versiya():
+    """Kompyuterda ishlab turgan Jarvis versiyasi (eski nusxalarda yo'q — None), javob bermasa ''."""
+    import urllib.request as ur
+    try:
+        with ur.urlopen(f"http://127.0.0.1:{server.PORT}/holat", timeout=3) as j:
+            return json.loads(j.read().decode("utf-8")).get("versiya")
+    except Exception:
+        return ""
+
+
+def _eski_nusxani_yop():
+    """Boshqa (ESKI) Jarvis ishlab turgan bo'lsa — masalan, jarvis.bat orqali ochilgan Python nusxasi —
+    foydalanuvchidan so'rab uni yopadi. Yopilsa True (shu yangi nusxa ishlashda davom etadi)."""
+    import ctypes
+    import subprocess
+    v = _ishlayotgan_versiya()
+    if v == VERSIYA or v == "":
+        return False                                      # o'sha versiya (yoki javob yo'q) — oddiy holat
+    javob = ctypes.windll.user32.MessageBoxW(
+        None, f"Kompyuterda ESKI Jarvis ishlab turibdi (versiya: {v or 'eski'}).\n"
+              "Shuning uchun yangi funksiyalar (telefondan kamera qo'shish va h.k.) ishlamayapti.\n\n"
+              "Eskisini yopib, yangisini ishga tushiraymi?", "Jarvis", 0x4 | 0x20 | 0x40000)   # Ha/Yo'q, ?, ustida
+    if javob != 6:                                        # IDYES
+        return False
+    try:
+        chiqish = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True,
+                                 timeout=10, creationflags=0x08000000).stdout
+        pidlar = {q.split()[-1] for q in chiqish.splitlines()
+                  if f":{server.PORT} " in q and "LISTEN" in q.upper()}
+        for pid in pidlar:
+            if pid.isdigit() and int(pid) != os.getpid():
+                subprocess.run(["taskkill", "/PID", pid, "/T", "/F"], capture_output=True, timeout=10,
+                               creationflags=0x08000000)
+    except Exception as xato:
+        print(f"(Eski Jarvis'ni yopib bo'lmadi: {xato})")
+        return False
+    time.sleep(1.5)                                       # port va mutex bo'shasin
+    return True
 
 
 def chatdan_keldi(matn):
@@ -2998,8 +3041,12 @@ def miya():
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
     server.kamera_ol = lambda nom: next((k for k in kameralar() if k["nom"] == nom), None)
     server.tel_amal = telefon_kamera_amali
+    server.versiya = VERSIYA
     threading.Thread(target=internetni_kuzat, daemon=True).start()
-    if server.ishga_tushir(web_bajar, pin):
+    ishladi = server.ishga_tushir(web_bajar, pin)
+    if not ishladi and os.name == "nt" and _eski_nusxani_yop():   # port band — eski Jarvis (mutexsiz) ishlayapti
+        ishladi = server.ishga_tushir(web_bajar, pin)
+    if ishladi:
         print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
         print(f"💬 Chat va arxiv: http://127.0.0.1:{server.PORT}/chat")
         if SOZ.get("chat_avto", True):
@@ -3096,8 +3143,9 @@ if __name__ == "__main__":
         import ctypes
         _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Jarvis_yagona_nusxa")
         if ctypes.windll.kernel32.GetLastError() == 183:          # ERROR_ALREADY_EXISTS
-            chat_och()                                            # ishlab turganining chati ochiladi
-            sys.exit(0)
+            if not _eski_nusxani_yop():
+                chat_och()                                        # ishlab turganining chati ochiladi
+                sys.exit(0)
     oyna = interfeys.Oyna(ui_navbat, kirish_navbat, SOZ)     # oyna — asosiy thread'da
     threading.Thread(target=mikrofon_ishi, daemon=True).start()
     threading.Thread(target=miya, daemon=True).start()
