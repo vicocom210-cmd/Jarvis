@@ -488,12 +488,15 @@ def sadp_qidir(soniya=3.0):
                 continue
             q = sadp_javobini_oqi(malumot.decode("utf-8", "ignore"))
             if q:
-                topilgan[q["ip"]] = q
+                topilgan[q["mac"] or q["seriya"] or q["ip"]] = q     # har qurilma alohida (IP bir xil bo'lsa ham)
     except OSError as xato:
         print(f"(Kamera qidiruvi xatosi: {xato})")
     finally:
         s.close()
-    return list(topilgan.values())
+    royxat = sorted(topilgan.values(), key=lambda q: tuple(int(x) if x.isdigit() else 0 for x in q["ip"].split(".")))
+    for q in royxat:                                 # bitta IP'da ikki qurilma — biri ikkinchisiga xalaqit beradi
+        q["toqnashuv"] = sum(1 for b in royxat if b["ip"] == q["ip"]) > 1
+    return royxat
 
 
 # ---------- JONLI VIDEO ----------

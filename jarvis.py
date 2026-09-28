@@ -1741,6 +1741,11 @@ def chat_sozlama_yoz(kalit, qiymat):
         if not topilgan:
             return False, ("Tarmoqda Hikvision qurilma topilmadi. Kamera yoqilganmi va kompyuter bilan "
                            "bitta routerdami, tekshiring"), {"topilgan": []}
+        toqnash = sorted({q["ip"] for q in topilgan if q.get("toqnashuv")})
+        if toqnash:
+            return True, (f"{len(topilgan)} ta qurilma topildi. ⚠️ {', '.join(toqnash)} manzilida BIR NECHTA qurilma "
+                          "bor — ular bir-biriga xalaqit beradi (parol 'noto'g'ri' ko'rinishi mumkin). "
+                          "SADP dasturida ulardan biriga boshqa IP bering"), {"topilgan": topilgan}
         return True, f"{len(topilgan)} ta qurilma topildi", {"topilgan": topilgan}
     if kalit == "kamera_eshik":                              # shu kamera eshikka ulangan
         royxat = [dict(k, eshik=(k.get("nom") == qiymat)) for k in SOZ.get("kameralar", [])]

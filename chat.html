@@ -463,6 +463,7 @@ function kameraBolimi(ich, K){
     for(const q of (d.topilgan||[])){
       const r=e('div','sozq'); const t=e('div');
       t.appendChild(matnli('b','','🔎 '+(q.tur||'Hikvision')+'  —  '+q.ip));
+      if(q.toqnashuv) t.appendChild(matnli('small','',"⚠️ Bu IP'da boshqa qurilma ham bor — IP'ni o'zgartiring")).style.color='#ffb3b3';
       t.appendChild(matnli('small','','Seriya: '+q.seriya+(q.faol?'':' · ⚠️ faollashtirilmagan (SADP/Hik-Connect da parol qo\'ying)')));
       const tb=matnli('button','tugma','Tanlash');
       tb.onclick=()=>{ m.ip.value=q.ip; m.http_port.value=q.http_port||80; if(!m.nom.value) m.nom.value=/KV|KD|intercom/i.test(q.tur)?'Eshik':'Kamera';
