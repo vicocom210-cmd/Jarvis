@@ -12,6 +12,8 @@ Kutubxona: pip install telethon
 """
 import asyncio
 import os
+import random
+import re
 import threading
 
 import sozlamalar
@@ -33,6 +35,20 @@ KOD_TURLARI = {
     "SentCodeTypeEmailCode": "Telegram'ga bog'langan email pochtangizga",
     "SentCodeTypeSetUpEmailRequired": "email kerak — avval Telegram ilovasida login email'ini sozlang",
 }
+
+
+# Oddiy emoji (bayroq, teri rangi va ZWJ birikmalari bilan)
+EMOJI = re.compile("(?:[\U0001F1E6-\U0001F1FF]{2}|[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u2300-\u23FF\u2190-\u21FF]"
+                   "\uFE0F?(?:\u200D[\U0001F000-\U0001FAFF\u2600-\u27BF]\uFE0F?)*)")
+STIKER_BELGI = re.compile(r"\[\s*STIKER\s*:\s*([^\]]{1,12})\]", re.I)
+
+
+def _toza(emoji):
+    return (emoji or "").replace("\uFE0F", "").strip()
+
+
+def _u16(matn):
+    return len(matn.encode("utf-16-le")) // 2
 
 
 def _qayerga(natija):
@@ -80,6 +96,10 @@ class Akkaunt:
         self.men = None                       # ulangan akkaunt nomi
         self.holat = "ulanmagan"              # ulanmagan / kod_kutilmoqda / qr_kutilmoqda / parol_kerak / ulangan / xato
         self.qr_url, self.qr_xato = None, ""
+        self.premium = False
+        self.bezak = False                    # True — Premium emoji/stikerlar yuklansin (kompaniya akkaunti)
+        self.emojilar = {}                    # oddiy emoji -> [premium emoji id, ...]
+        self.stikerlar = {}                   # emoji -> [stiker hujjati, ...]
 
     # --- ichki: alohida thread'dagi asyncio ---
     def _bajar(self, coro, timeout=40):
@@ -165,9 +185,82 @@ class Akkaunt:
 
     async def _ulandi_async(self):
         me = await self.mijoz.get_me()
+        self.premium = bool(getattr(me, "premium", False))
+        if self.bezak and self.premium:
+            try:
+                await self._bezak_yukla()
+            except Exception as xato:
+                print(f"(Premium emoji yuklanmadi: {xato})")
         self.men = " ".join(x for x in (me.first_name, me.last_name) if x) + (f" (@{me.username})" if me.username else "")
         self.holat = "ulangan"
         self.holat_xabari(f"✈️ {self.nom} ulandi: {self.men}")
+
+    async def _bezak_yukla(self):
+        """Akkauntdagi Premium emoji va stiker to'plamlarini o'qiydi (o'rnatilganlari, bo'lmasa — tavsiya etilganlari)."""
+        from telethon.tl.functions.messages import (GetAllStickersRequest, GetEmojiStickersRequest,
+                                                    GetFeaturedEmojiStickersRequest, GetStickerSetRequest)
+        from telethon.tl.types import DocumentAttributeCustomEmoji, DocumentAttributeSticker, InputStickerSetID
+        toplamlar = []
+        for sorov, soni in ((GetEmojiStickersRequest(0), 10), (GetAllStickersRequest(0), 8)):
+            try:
+                toplamlar += list(getattr(await self.mijoz(sorov), "sets", []))[:soni]
+            except Exception:
+                pass
+        if not any(getattr(t, "emojis", False) for t in toplamlar):
+            try:
+                toplamlar += [getattr(t, "set", t) for t in (await self.mijoz(GetFeaturedEmojiStickersRequest(0))).sets][:5]
+            except Exception:
+                pass
+        emojilar, stikerlar = {}, {}
+        for t in toplamlar:
+            try:
+                to = await self.mijoz(GetStickerSetRequest(InputStickerSetID(t.id, t.access_hash), 0))
+            except Exception:
+                continue
+            for d in to.documents:
+                for a in d.attributes:
+                    if isinstance(a, DocumentAttributeCustomEmoji) and a.alt:
+                        emojilar.setdefault(_toza(a.alt), []).append(d.id)
+                    elif isinstance(a, DocumentAttributeSticker) and a.alt:
+                        stikerlar.setdefault(_toza(a.alt), []).append(d)
+        self.emojilar, self.stikerlar = emojilar, stikerlar
+        print(f"(Premium: {len(emojilar)} xil emoji, {len(stikerlar)} xil stiker yuklandi)")
+
+    def bezak_bormi(self):
+        return self.premium and bool(self.emojilar or self.stikerlar)
+
+    def yubor_bezakli(self, chat_id, matn):
+        """Matnni Premium emoji bilan yuboradi; oxirida [STIKER:👋] bo'lsa — mos stikerni ham.
+        Yuborilgan xabarlar ro'yxatini qaytaradi."""
+        from telethon.tl.types import MessageEntityCustomEmoji
+        stiker = None
+        m = STIKER_BELGI.search(matn)
+        if m:
+            stiker = _toza(m.group(1))
+            matn = (matn[:m.start()] + matn[m.end():]).strip()
+        belgilar = []
+        if self.premium and self.emojilar:
+            for e in EMOJI.finditer(matn):
+                idlar = self.emojilar.get(_toza(e.group()))
+                if idlar:
+                    belgilar.append(MessageEntityCustomEmoji(_u16(matn[:e.start()]), _u16(e.group()), random.choice(idlar)))
+        yuborilgan = []
+        if matn:
+            try:
+                yuborilgan.append(self._bajar(self.mijoz.send_message(chat_id, matn, formatting_entities=belgilar or None),
+                                              timeout=30))
+            except Exception as xato:
+                if not belgilar:
+                    raise
+                print(f"(Premium emoji bilan yuborilmadi, oddiy yuboraman: {xato})")
+                yuborilgan.append(self.yubor(chat_id, matn))
+        if stiker and self.premium and self.stikerlar.get(stiker):
+            try:
+                yuborilgan.append(self._bajar(self.mijoz.send_file(chat_id, random.choice(self.stikerlar[stiker])),
+                                              timeout=30))
+            except Exception as xato:
+                print(f"(Stiker yuborilmadi: {xato})")
+        return yuborilgan
 
     def qayta_yubor(self):
         """Kodni boshqa usulda (odatda SMS) qayta yuborish."""

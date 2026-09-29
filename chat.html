@@ -480,6 +480,10 @@ function telegramAkkauntBolimi(ich, T, p){
     const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','','Avtomatik javob (Claude)'));
     t.appendChild(matnli('small','',"Yoqilsa — shaxsiy xabar yozgan har kimga Claude javob beradi (soatiga 60 tagacha)"));
     r.appendChild(t); r.appendChild(almashtirgich(T.yoniq,'tgb_yoniq')); b.appendChild(r);
+    if(T.premium){ const r2=e('div','sozq'); const t2=e('div'); t2.appendChild(matnli('b','','⭐ Premium emoji va stikerlar'));
+      t2.appendChild(matnli('small','',T.emoji_soni||T.stiker_soni ? ("Akkauntingizdagi to'plamlardan: "+T.emoji_soni+" xil emoji, "+T.stiker_soni+" xil stiker. Claude o'zi mosini tanlaydi")
+        : "Premium bor, lekin emoji/stiker to'plami topilmadi — Telegram'da bir nechta to'plam qo'shing va Jarvis'ni qayta yoqing"));
+      r2.appendChild(t2); r2.appendChild(almashtirgich(T.premium_yoniq,'tgb_premium')); b.appendChild(r2); }
     b.appendChild(e('div','izoh',"<b>Kompaniya sayti</b> — Claude undagi ma'lumotni o'qib oladi:"));
     b.appendChild(kiritish(T.sayt,'gatework.uz','tgb_sayt','Saqlash'));
     b.appendChild(e('div','izoh',"<b>Kompaniya haqida</b> — Claude faqat shunga tayanadi (ish turlari, qanday ro'yxatdan o'tiladi, ish vaqti, operator bilan bog'lanish...). Yo'q narsani o'ylab topmaydi:"));

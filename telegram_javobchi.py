@@ -17,6 +17,7 @@ import threading
 import time
 
 import sozlamalar
+import telegram_akkaunt
 
 JAVOBLAR_FAYLI = os.path.join(sozlamalar.PAPKA, "telegram_biznes_javoblar.json")
 
@@ -33,6 +34,7 @@ class Javobchi:
         self.soat_chegara = 60            # soatiga ko'pi bilan shuncha javob
         self.chat_oraligi = 8             # s — bitta chatga ikki javob orasida
         self.javoblar_soni = 0
+        self.bezakli = True               # Premium bo'lsa — premium emoji va stikerlar bilan
         self._oxirgi = {}                 # chat_id -> oxirgi kelgan xabar vaqti
         self._chatga_javob = {}           # chat_id -> oxirgi javob vaqti
         self._soat = collections.deque()
@@ -107,8 +109,12 @@ class Javobchi:
         javob = self.ai(suhbat, self.malumot())
         if not javob:
             return
-        yuborilgan = self.akk.yubor(chat_id, javob)
-        self._bizniki.setdefault(chat_id, set()).add(getattr(yuborilgan, "id", 0))
+        if self.bezakli and self.akk.bezak_bormi():
+            yuborilganlar = self.akk.yubor_bezakli(chat_id, javob)
+        else:
+            yuborilganlar = [self.akk.yubor(chat_id, telegram_akkaunt.STIKER_BELGI.sub("", javob).strip())]
+        for x in yuborilganlar:
+            self._bizniki.setdefault(chat_id, set()).add(getattr(x, "id", 0))
         self._saqla()
         self._chatga_javob[chat_id] = time.time()
         self._soat.append(time.time())

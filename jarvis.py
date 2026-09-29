@@ -1184,7 +1184,11 @@ def tgb_malumot():
 
 def _tgb_ai(suhbat, malumot):
     kompaniya = sayt.manzil_top(SOZ.get("tgb_sayt") or "") or (tgb.men if tgb else "") or "kompaniya"
-    return sun_iy.biznes_javob(suhbat, malumot, kompaniya.split("//", 1)[-1].rstrip("/"))
+    emojilar = stikerlar = ""
+    if tgb and SOZ.get("tgb_premium", True) and tgb.bezak_bormi():
+        emojilar = " ".join(list(tgb.emojilar)[:60])
+        stikerlar = " ".join(list(tgb.stikerlar)[:30])
+    return sun_iy.biznes_javob(suhbat, malumot, kompaniya.split("//", 1)[-1].rstrip("/"), emojilar, stikerlar)
 
 
 def tgb_ishga_tushir():
@@ -1200,9 +1204,10 @@ def tgb_ishga_tushir():
     if tgb is None:
         tgb = telegram_akkaunt.Akkaunt(lambda x: tgb_javobchi and tgb_javobchi.keldi(x), _tgb_log,
                                        sessiya=telegram_akkaunt.SESSIYA_BIZNES, nom="2-Telegram akkaunt")
-        tgb.hammasi, tgb.rasm_yukla = True, False
+        tgb.hammasi, tgb.rasm_yukla, tgb.bezak = True, False, True
         tgb_javobchi = telegram_javobchi.Javobchi(tgb, _tgb_ai, tgb_malumot, _tgb_log)
     tgb_javobchi.yoniq = bool(SOZ.get("tgb_yoniq"))
+    tgb_javobchi.bezakli = bool(SOZ.get("tgb_premium", True))
     try:
         return tgb.ishga_tushir(SOZ["tga_api_id"], SOZ["tga_api_hash"])
     except Exception as xato:
@@ -2103,7 +2108,9 @@ def chat_sozlamalari():
         "tgb": {"holat": tgb.holat if tgb else "ulanmagan", "men": tgb.men if tgb else None,
                 "api_bor": bool(SOZ.get("tga_api_id") and SOZ.get("tga_api_hash")),
                 "yoniq": bool(SOZ.get("tgb_yoniq")), "malumot": SOZ.get("tgb_malumot") or "",
-                "sayt": SOZ.get("tgb_sayt") or "", "javoblar": tgb_javobchi.javoblar_soni if tgb_javobchi else 0},
+                "sayt": SOZ.get("tgb_sayt") or "", "javoblar": tgb_javobchi.javoblar_soni if tgb_javobchi else 0,
+                "premium": bool(tgb and tgb.premium), "premium_yoniq": bool(SOZ.get("tgb_premium", True)),
+                "emoji_soni": len(tgb.emojilar) if tgb else 0, "stiker_soni": len(tgb.stikerlar) if tgb else 0},
         "telegram": {"token": ("•••• " + token[-4:]) if token else "", "egasi": bool(SOZ.get("telegram_egasi")),
                      "ishlayapti": bool(bot)},
         "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
@@ -2463,6 +2470,12 @@ def chat_sozlama_yoz(kalit, qiymat):
             tgb_javobchi.yoniq = bool(qiymat)
         return True, ("Avtomatik javob yoqildi: kim yozsa, Claude javob beradi. Siz o'zingiz chatga yozsangiz — "
                       "Jarvis 30 daqiqa o'sha chatga aralashmaydi." if qiymat else "Avtomatik javob o'chirildi.")
+    if kalit == "tgb_premium":
+        sozlama_ozgartir("tgb_premium", bool(qiymat), ayt=False)
+        if tgb_javobchi:
+            tgb_javobchi.bezakli = bool(qiymat)
+        return True, ("Claude javoblarida Premium emoji va stikerlar ishlatiladi." if qiymat
+                      else "Oddiy emojilar bilan yoziladi.")
     if kalit in ("tgb_malumot", "tgb_sayt"):
         sozlama_ozgartir(kalit, str(qiymat or "").strip()[:6000], ayt=False)
         _tgb_sayt["vaqt"] = 0                                    # sayt qayta o'qilsin

@@ -37,7 +37,7 @@ STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
             "claude_kalit": "", "claude_model": "claude-sonnet-5",
             "tga_api_id": "", "tga_api_hash": "", "tga_dostlar": [], "tga_hammasi": False,
             "ig_token": "", "ig_id": "", "ig_username": "", "ig_rejalar": [], "ig_korilgan": [], "ig_avto_ulash": False, "ig_brauzer_kirgan": False,
-            "tgb_yoniq": False, "tgb_malumot": "", "tgb_sayt": "gatework.uz",
+            "tgb_yoniq": False, "tgb_malumot": "", "tgb_sayt": "gatework.uz", "tgb_premium": True,
             "kameralar": [], "kamera_kuzatuv": False, "kamera_ovoz": False,
             "yuz_eshik": None, "yuz_eshik_och": True}      # None — hali tanlanmagan (o'zi yoqiladi)
 

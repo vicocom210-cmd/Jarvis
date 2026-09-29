@@ -246,11 +246,18 @@ BIZNES_TIZIM = (
     "ayt va savolini matn bilan yozishini so'ra.\n\n--- KOMPANIYA MA'LUMOTI ---\n{malumot}\n--- TUGADI ---")
 
 
-def biznes_javob(suhbat, malumot, kompaniya="kompaniya"):
+def biznes_javob(suhbat, malumot, kompaniya="kompaniya", emojilar="", stikerlar=""):
     """suhbat: [(rol, matn), ...], oxirgisi — mijozning xabari. AI yo'q/xato — None. Jarvis tarixiga aralashmaydi."""
     if not suhbat:
         return None
     tizim = BIZNES_TIZIM.format(kompaniya=kompaniya, malumot=malumot or "(ma'lumot kiritilmagan)")
+    if emojilar:            # Telegram Premium — oddiy emojilar animatsiyali premium emojiga almashtiriladi
+        tizim += ("\n\nAkkaunt Telegram Premium: javobga mazmuniga mos 1-3 ta emoji qo'sh, iloji boricha shu "
+                  "ro'yxatdagilardan (ular animatsiyali ko'rinadi): " + emojilar)
+    if stikerlar:
+        tizim += ("\nSalomlashish, minnatdorchilik yoki xayrlashish xabarida (har xabarda EMAS, suhbatda ko'pi bilan "
+                  "1-2 marta) xabar oxiriga [STIKER:emoji] yozishing mumkin — o'sha emojiga mos stiker yuboriladi. "
+                  "Faqat shu emojilardan: " + stikerlar)
     oldingi, savol = suhbat[-11:-1], suhbat[-1][1]
     while oldingi and oldingi[0][0] != "user":
         oldingi = oldingi[1:]
