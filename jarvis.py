@@ -20,6 +20,14 @@ if getattr(sys, "frozen", False) and sys.stdout is None:
     sys.stdout = sys.stderr = open(os.path.join(_log_papka, "jarvis.log"), "a",
                                    encoding="utf-8", buffering=1)
 
+# Windows'ning sertifikatlar omboridan foydalanamiz: antivirus (Kaspersky, ESET...) HTTPS'ni tekshirsa ham
+# ovoz, ovozni tanish va Claude "sertifikat xatosi" bilan to'xtab qolmasin (boshqa kompyuterlarda ko'p uchraydi)
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
 # "Jarvis.exe --chat URL" — faqat chat oynasi (alohida jarayon). Og'ir qismlarni yuklamaymiz.
 if "--chat" in sys.argv:
     import chat_oyna
@@ -163,12 +171,35 @@ def ovoz_balandliklari(tovush):
             for i in range(0, len(xom), qadam)]
 
 
+OVOZ_HOLAT = {"edge": None, "xato": ""}    # edge-tts ishlayaptimi (tekshiruv uchun)
+
+
+def _windows_ovozi(matn):
+    """Zaxira: Windows'ning o'z ovozi (internet shart emas). Edge ovoz serveri ishlamasa — jim qolmaymiz."""
+    yol = os.path.join(tempfile.gettempdir(), "jarvis_zaxira.wav")
+    skript = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+              "$s.SetOutputToWaveFile($env:JARVIS_WAV); $s.Speak($env:JARVIS_MATN); $s.Dispose()")
+    muhit = dict(os.environ, JARVIS_WAV=yol, JARVIS_MATN=matn)
+    subprocess.run(["powershell", "-NoProfile", "-Command", skript], env=muhit, timeout=60,
+                   capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    with open(yol, "rb") as f:
+        return f.read()
+
+
 def _ovoz_yasa(matn, ovoz):
     """Matnni ovozga aylantiradi. Qisqa gaplar xotirada saqlanadi — keyingi safar darhol."""
     kalit = (matn, ovoz)
     if kalit in _ovoz_xotira:
         return _ovoz_xotira[kalit]
-    asyncio.run(edge_tts.Communicate(matn, ovoz).save(AUDIO_FAYL))
+    try:
+        asyncio.run(asyncio.wait_for(edge_tts.Communicate(matn, ovoz).save(AUDIO_FAYL), 25))
+        OVOZ_HOLAT.update(edge=True, xato="")
+    except Exception as xato:
+        OVOZ_HOLAT.update(edge=False, xato=f"{type(xato).__name__}: {xato}"[:200])
+        print(f"(Edge ovozi ishlamadi — Windows ovozi bilan gapiraman: {OVOZ_HOLAT['xato']})")
+        if os.name != "nt":
+            raise
+        return _windows_ovozi(matn)
     with open(AUDIO_FAYL, "rb") as f:
         malumot = f.read()
     if len(matn) <= 60 and len(_ovoz_xotira) < 100:
@@ -179,8 +210,15 @@ def _ovoz_yasa(matn, ovoz):
 EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2190-\u21FF\u2B00-\u2BFF\uFE0F\u200D]+")
 
 
+def _mixer_tayyor():
+    """Ovoz qurilmasi Jarvis yonganda yo'q bo'lgan bo'lsa (karnay keyin ulangan) — qayta ulanadi."""
+    if not pygame.mixer.get_init():
+        pygame.mixer.init()
+
+
 def _gapir(matn, ovoz=None):
     try:
+        _mixer_tayyor()
         matn = EMOJI_RE.sub("", matn).strip() or matn      # emojilarni ovoz chiqarib o'qimaymiz
         malumot = _ovoz_yasa(matn, ovoz or ovoz_nomi())
         try:
@@ -3469,6 +3507,10 @@ def bajar(b):
         gapir(f"Xayr, {ISM}!")
         return False
 
+    # "o'zingni tekshir" — internet, ovoz, mikrofon, AI kaliti (boshqa kompyuterda nima yetishmasligini aytadi)
+    elif re.search(r"(o'?zingni|ozingni|jarvisni) tekshir|^tekshiruv$|diagnostika", b):
+        tekshiruv(ovozli=True)
+
     # "instagramni tekshir, faolmi" / "instagram ulanganmi" — Jarvis'dagi ulanish holati
     elif bor(b, "instagram", "инстаграм", "insta") and re.search(
             r"(tekshir|faolmi|ulanganmi|ulandimi|ishlayaptimi|ishlaydimi|holat|проверь|работает)", b):
@@ -3875,18 +3917,101 @@ def bajar(b):
 
 
 # ---------- ASOSIY SIKL (miya thread'i) ----------
+def _xavfsiz(nom, ish, *args):
+    """Ishga tushishdagi bitta qism xato bersa — Jarvis'ning qolgani baribir ishlasin (boshqa kompyuterda
+    kamera, Telegram va h.k. sozlanmagan bo'lishi mumkin)."""
+    try:
+        return ish(*args)
+    except Exception as xato:
+        print(f"(Ishga tushishda xato [{nom}]: {type(xato).__name__}: {xato})")
+        TEKSHIRUV_XATOLARI.append(f"{nom}: {type(xato).__name__}: {str(xato)[:120]}")
+        return None
+
+
+TEKSHIRUV_XATOLARI = []
+
+
+def mikrofon_ruxsatmi():
+    """Windows 'Maxfiylik → Mikrofon' ruxsati: False — o'chirilgan (Jarvis hech narsa eshitmaydi)."""
+    if os.name != "nt":
+        return True
+    import winreg
+    asos = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
+    for ildiz, yol in ((winreg.HKEY_LOCAL_MACHINE, asos), (winreg.HKEY_CURRENT_USER, asos),
+                       (winreg.HKEY_CURRENT_USER, asos + r"\NonPackaged")):
+        try:
+            with winreg.OpenKey(ildiz, yol) as k:
+                if str(winreg.QueryValueEx(k, "Value")[0]).lower() == "deny":
+                    return False
+        except OSError:
+            continue
+    return True
+
+
+def tekshiruv(ovozli=False):
+    """Jarvis ishlashi uchun kerakli narsalarni tekshiradi va nima yetishmasligini aytadi."""
+    muammolar, yaxshi = [], []
+    try:
+        urllib.request.urlopen("https://www.google.com/generate_204", timeout=6)
+        yaxshi.append("internet")
+    except Exception as xato:
+        if "CERTIFICATE" in str(xato).upper() or "SSL" in type(xato).__name__.upper():
+            muammolar.append("Internet bor, lekin antivirus yoki firewall xavfsiz ulanishni (HTTPS) to'syapti — "
+                             "antivirusda Jarvis'ni istisnolarga qo'shing yoki 'HTTPS/SSL tekshiruvi'ni o'chiring")
+        else:
+            muammolar.append("Internet yo'q yoki bloklangan — ovozni tanish (Google) va Jarvis ovozi internet orqali ishlaydi")
+    if not pygame.mixer.get_init():
+        try:
+            pygame.mixer.init()
+        except Exception as xato:
+            muammolar.append(f"Karnay/naushnik topilmadi ({xato}) — ovoz qurilmasini ulang")
+    try:
+        asyncio.run(asyncio.wait_for(edge_tts.Communicate("Salom", ovoz_nomi()).save(
+            os.path.join(tempfile.gettempdir(), "jarvis_sinov.mp3")), 20))
+        yaxshi.append("ovoz")
+    except Exception as xato:
+        muammolar.append("Jarvis'ning o'zbekcha ovozi (Microsoft Edge ovoz serveri) ishlamayapti — Windows ovozi bilan "
+                         f"gapiraman. Sabab: {type(xato).__name__}. Antivirus/firewall Jarvis'ni internetdan to'smayaptimi?")
+    try:
+        ruxsat = mikrofon_ruxsatmi()
+    except Exception:
+        ruxsat = True
+    if not ruxsat:
+        muammolar.append("Windows mikrofonni taqiqlagan: Sozlamalar → Maxfiylik (Privacy) → Mikrofon → "
+                         "'Ilovalarga mikrofondan foydalanishga ruxsat' va 'Kompyuter ilovalariga ruxsat' ni YOQING")
+    elif not MIK_HOLAT.get("ishlayapti"):
+        muammolar.append("Mikrofon topilmadi: " + (MIK_HOLAT.get("xato") or "ulanganini tekshiring"))
+    else:
+        yaxshi.append("mikrofon")
+    if not sun_iy.bormi():
+        muammolar.append("Sun'iy intellekt kaliti yo'q — savollarga aqlli javob uchun sozlamalarda Claude yoki bepul "
+                         "Groq kalitini qo'ying (kalitlar har kompyuterda alohida saqlanadi)")
+    muammolar += TEKSHIRUV_XATOLARI[:3]
+    if not muammolar:
+        matn = "🩺 Tekshiruv: hammasi joyida — internet, ovoz, mikrofon va sun'iy intellekt ishlayapti."
+    else:
+        matn = "🩺 Tekshiruv — " + str(len(muammolar)) + " ta muammo:\n" + "\n".join("⚠️ " + m for m in muammolar)
+    print(matn)
+    if ovozli or muammolar:
+        ui_navbat.put(("jarvis", matn))
+        arxiv.yoz("jarvis", matn)
+    if ovozli:
+        gapir("Hammasi joyida." if not muammolar else f"{len(muammolar)} ta muammo topdim, chatda yozdim.")
+    return muammolar
+
+
 def miya():
     global media_boshlandi, javob_telegramga, oxirgi_manba, eslatmalar
     ui_navbat.put(("sozlamalar", dict(SOZ)))
-    telegram_ishga_tushir()
-    eslatmalar = qulayliklar.Eslatmalar(eslatma_vaqti)     # eski eslatmalar ham tiklanadi
+    _xavfsiz("Telegram bot", telegram_ishga_tushir)
+    eslatmalar = _xavfsiz("eslatmalar", qulayliklar.Eslatmalar, eslatma_vaqti)     # eski eslatmalar ham tiklanadi
     if SOZ.get("yuz_eshik") and kameralar():
         fonda(yuz_eshikni_yoq, True)
     if SOZ.get("kamera_kuzatuv") and kameralar():
-        print(f"📹 Kamera kuzatuvi davom etyapti: {kuzatuvni_yoq(True)} ta kamera")
+        print(f"📹 Kamera kuzatuvi davom etyapti: {_xavfsiz('kamera', kuzatuvni_yoq, True)} ta kamera")
     fonda(tga_ishga_tushir)                         # do'stlardan kelgan Telegram xabarlari
     fonda(tgb_ishga_tushir)                         # 2-akkaunt (kompaniya) — avtomatik javob
-    ig_rejalarni_tikla()                            # rejalashtirilgan Instagram postlari
+    _xavfsiz("Instagram rejalar", ig_rejalarni_tikla)   # rejalashtirilgan Instagram postlari
     pin = str(SOZ.get("telefon_pin") or "0000")
     himoya.ogohlantir = lambda matn: bot.yoz(matn) if bot and bot.egasi else None
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
@@ -3894,14 +4019,14 @@ def miya():
     server.tel_amal = telefon_kamera_amali
     server.versiya = VERSIYA
     threading.Thread(target=internetni_kuzat, daemon=True).start()
-    ishladi = server.ishga_tushir(web_bajar, pin)
+    ishladi = _xavfsiz("chat server", server.ishga_tushir, web_bajar, pin)
     if not ishladi and os.name == "nt" and _eski_nusxani_yop():   # port band — eski Jarvis (mutexsiz) ishlayapti
-        ishladi = server.ishga_tushir(web_bajar, pin)
+        ishladi = _xavfsiz("chat server", server.ishga_tushir, web_bajar, pin)
     if ishladi:
         print(f"📱 Telefon ilovasi (Wi-Fi): http://{server.ip_manzil()}:{server.PORT}  (PIN: {pin})")
         print(f"💬 Chat va arxiv: http://127.0.0.1:{server.PORT}/chat")
         if SOZ.get("chat_avto", True):
-            chat_och()                              # chat oynasi o'zi ochiladi
+            _xavfsiz("chat oynasi", chat_och)       # chat oynasi o'zi ochiladi
     # Bulut ko'prigi — istalgan joydan ishlash uchun (bir Wi-Fi shart emas)
     kanal = SOZ.get("telefon_kanal")
     if not kanal:
@@ -3919,12 +4044,14 @@ def miya():
             raise
         shifr_kalit = None
         print("(Uydan tashqarida kamera uchun: pip install cryptography)")
-    bulut_holat = bulut.ishga_tushir(kanal, pin, web_bajar, kalit=shifr_kalit, amal=telefon_kamera_amali)
+    bulut_holat = _xavfsiz("bulut", lambda: bulut.ishga_tushir(kanal, pin, web_bajar, kalit=shifr_kalit,
+                                                               amal=telefon_kamera_amali))
     if bulut_holat == "ok":
         print(f"☁️ Internet orqali boshqarish — Kanal: {kanal}  (PIN: {pin})")
     elif bulut_holat == "yoq_kutubxona":
         print("☁️ Internet orqali boshqarish uchun: pip install paho-mqtt")
     gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
+    threading.Timer(6, lambda: _xavfsiz("tekshiruv", tekshiruv)).start()   # muammo bo'lsa — chatda aytadi
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
     while True:
@@ -3999,7 +4126,7 @@ if __name__ == "__main__":
         import pyaudio                   # noqa: F401  — mikrofon
         flac = speech_recognition.get_flac_converter()    # Google ovoz tanishi uchun kerak
         for ixtiyoriy in ("paho.mqtt.client", "cv2", "uiautomation", "shazamio", "webview", "clr",
-                          "anthropic", "telethon", "telegram_akkaunt", "qrcode", "cryptography", "instagram", "instagram_brauzer"):
+                          "anthropic", "telethon", "truststore", "telegram_akkaunt", "qrcode", "cryptography", "instagram", "instagram_brauzer"):
             try:
                 __import__(ixtiyoriy)
                 print(f"  + {ixtiyoriy}")

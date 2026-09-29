@@ -28,7 +28,7 @@ jobs:
       - name: Kutubxonalarni o'rnatish
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pillow SpeechRecognition pyaudio edge-tts pygame pyautogui pyperclip paho-mqtt opencv-python uiautomation pywebview anthropic telethon qrcode cryptography playwright
+          pip install pyinstaller pillow SpeechRecognition pyaudio edge-tts pygame pyautogui pyperclip paho-mqtt opencv-python uiautomation pywebview anthropic telethon qrcode cryptography playwright truststore
 
       - name: Shazam (musiqani aniqlash) — ixtiyoriy
         continue-on-error: true
@@ -66,6 +66,7 @@ jobs:
           --hidden-import qrcode
           --hidden-import instagram_brauzer
           --hidden-import sayt
+          --hidden-import truststore
           --hidden-import telegram_javobchi
           --collect-all playwright
           --hidden-import clr
