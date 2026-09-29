@@ -779,6 +779,14 @@ async function sozlamalarniYukla(){
   const tgh = !S.telegram.token ? ['kulrang','Ulanmagan'] : (S.telegram.egasi ? ['yashil','Ulangan'] : ['sariq','Kod kutilmoqda']);
   b.querySelector('h3').appendChild(matnli('span','holat-belgi '+tgh[0], tgh[1]));
   b.appendChild(kiritish('', S.telegram.token || '123456789:AAE...','telegram_token','Ulash','password'));
+  if(S.telegram.token && !S.telegram.egasi){
+    if(S.telegram.kod){ const k=e('div','izoh',"Juftlash kodi — shu 6 raqamni <b>botingizga Telegram'da</b> yuboring:");
+      const kod=matnli('div','',S.telegram.kod); kod.style.cssText='font-size:34px;font-weight:700;letter-spacing:8px;margin:8px 0;color:#ffd99a;user-select:all';
+      b.appendChild(k); b.appendChild(kod);
+      b.appendChild(e('div','izoh',"🔒 Kodni hech kimga bermang — birinchi yuborgan odam bot egasi bo'ladi. Jarvis qayta yonsa, kod yangilanadi."));
+    } else if(S.telegram.holat==='xato') b.appendChild(e('div','izoh',"⚠️ Bot ulanmadi — token noto'g'ri yoki internet yo'q. @BotFather'dagi tokenni to'liq nusxalab, qayta 'Ulash'ni bosing."));
+    else b.appendChild(e('div','izoh',"⏳ Bot ulanyapti... bir necha soniyada kod shu yerda chiqadi (sahifani yangilang)."));
+  }
   if(S.telegram.egasi){ const u=matnli('button','tugma ikkinchi','Telefonni uzish'); u.style.marginTop='12px';
     u.onclick=()=>{ if(confirm('Telegramdagi telefoningiz uziladi. Davom etaymi?')) sozYoz('telegram_uz',1); }; b.appendChild(u); }
   ich.appendChild(b);

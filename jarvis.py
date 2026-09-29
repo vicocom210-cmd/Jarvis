@@ -548,10 +548,17 @@ xom_rejim = False                 # buyruq '/' bilan boshlandi — xabar aynan y
 eslatmalar = None                 # qulayliklar.Eslatmalar — miya() ishga tushganda yaratiladi
 
 
+TG_BOT = {"holat": "", "kod": "", "nom": ""}    # chat sozlamalarida ko'rinadi (juftlash kodi shu yerda)
+
+
 def telegram_holati(holat_, qiymat):
     ui_navbat.put(("telegram_holat", holat_, qiymat))
+    TG_BOT["holat"] = holat_
+    TG_BOT["kod"] = qiymat if holat_ == "kod" else ""
     if holat_ == "kod":
-        ui_navbat.put(("jarvis", f"Telegram juftlash kodi: {qiymat}"))
+        matn = f"📱 Telegram juftlash kodi: {qiymat} — shu 6 raqamni botingizga Telegram'da yuboring."
+        ui_navbat.put(("jarvis", matn))
+        arxiv.yoz("jarvis", matn)
 
 
 def telegram_ishga_tushir():
@@ -2151,7 +2158,7 @@ def chat_sozlamalari():
                 "emoji_soni": len(tgb.emojilar) if tgb else 0, "stiker_soni": len(tgb.stikerlar) if tgb else 0,
                 "oxirgi": tgb_javobchi.oxirgi_holat if tgb_javobchi else ""},
         "telegram": {"token": ("•••• " + token[-4:]) if token else "", "egasi": bool(SOZ.get("telegram_egasi")),
-                     "ishlayapti": bool(bot)},
+                     "ishlayapti": bool(bot), "kod": TG_BOT["kod"], "holat": TG_BOT["holat"]},
         "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
         "avtostart": kompyuter.avtostart_bormi(),
         "papka": sozlamalar.PAPKA,
