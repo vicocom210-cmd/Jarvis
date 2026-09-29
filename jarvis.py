@@ -2110,7 +2110,8 @@ def chat_sozlamalari():
                 "yoniq": bool(SOZ.get("tgb_yoniq")), "malumot": SOZ.get("tgb_malumot") or "",
                 "sayt": SOZ.get("tgb_sayt") or "", "javoblar": tgb_javobchi.javoblar_soni if tgb_javobchi else 0,
                 "premium": bool(tgb and tgb.premium), "premium_yoniq": bool(SOZ.get("tgb_premium", True)),
-                "emoji_soni": len(tgb.emojilar) if tgb else 0, "stiker_soni": len(tgb.stikerlar) if tgb else 0},
+                "emoji_soni": len(tgb.emojilar) if tgb else 0, "stiker_soni": len(tgb.stikerlar) if tgb else 0,
+                "oxirgi": tgb_javobchi.oxirgi_holat if tgb_javobchi else ""},
         "telegram": {"token": ("•••• " + token[-4:]) if token else "", "egasi": bool(SOZ.get("telegram_egasi")),
                      "ishlayapti": bool(bot)},
         "telefon": {"ip": server.ip_manzil(), "port": server.PORT, "kanal": SOZ.get("telefon_kanal", "")},
@@ -2470,6 +2471,12 @@ def chat_sozlama_yoz(kalit, qiymat):
             tgb_javobchi.yoniq = bool(qiymat)
         return True, ("Avtomatik javob yoqildi: kim yozsa, Claude javob beradi. Siz o'zingiz chatga yozsangiz — "
                       "Jarvis 30 daqiqa o'sha chatga aralashmaydi." if qiymat else "Avtomatik javob o'chirildi.")
+    if kalit == "tgb_sinash":                                    # Claude'ning javobini Telegram'siz ko'rish
+        savol = str(qiymat if isinstance(qiymat, str) and qiymat.strip() else "Salom, ish bormi?").strip()[:500]
+        javob = _tgb_ai([("user", savol)], tgb_malumot())
+        if not javob:
+            return False, "Claude javob bermadi: " + (sun_iy.biznes_xato or "AI kaliti ulanganmi?")
+        return True, f"Mijoz: «{savol}»\nClaude: {javob}"
     if kalit == "tgb_premium":
         sozlama_ozgartir("tgb_premium", bool(qiymat), ayt=False)
         if tgb_javobchi:

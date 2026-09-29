@@ -246,8 +246,12 @@ BIZNES_TIZIM = (
     "ayt va savolini matn bilan yozishini so'ra.\n\n--- KOMPANIYA MA'LUMOTI ---\n{malumot}\n--- TUGADI ---")
 
 
+biznes_xato = ""                 # oxirgi avto-javob xatosi (sozlamalarda ko'rinadi)
+
+
 def biznes_javob(suhbat, malumot, kompaniya="kompaniya", emojilar="", stikerlar=""):
     """suhbat: [(rol, matn), ...], oxirgisi — mijozning xabari. AI yo'q/xato — None. Jarvis tarixiga aralashmaydi."""
+    global biznes_xato
     if not suhbat:
         return None
     tizim = BIZNES_TIZIM.format(kompaniya=kompaniya, malumot=malumot or "(ma'lumot kiritilmagan)")
@@ -267,9 +271,13 @@ def biznes_javob(suhbat, malumot, kompaniya="kompaniya", emojilar="", stikerlar=
         try:
             j = (ishlovchi(savol, tizim, oldingi, harorat=0.4) or "").strip()
             if j:
+                biznes_xato = ""
                 return j[:3500]
         except Exception as xato:
             print(f"(Biznes javob xatosi [{kalit}]: {xato})")
+            biznes_xato = f"{kalit.split('_')[0].title()}: {str(xato)[:150]}"
+    if not any(os.environ.get(k) for k, _ in AI_TARTIBI):
+        biznes_xato = "AI kaliti ulanmagan"
     return None
 
 

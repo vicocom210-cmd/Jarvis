@@ -35,6 +35,9 @@ class Javobchi:
         self.chat_oraligi = 8             # s — bitta chatga ikki javob orasida
         self.javoblar_soni = 0
         self.bezakli = True               # Premium bo'lsa — premium emoji va stikerlar bilan
+        self.oxirgi_holat = "Hali xabar kelmadi"   # sozlamalarda ko'rinadi — nima bo'lganini bilish uchun
+        self._aytilgan = {}
+        self._kimlar = {}               # chat_id -> oxirgi aytilgan sabab (bir xil sababni takrorlamaslik)
         self._oxirgi = {}                 # chat_id -> oxirgi kelgan xabar vaqti
         self._chatga_javob = {}           # chat_id -> oxirgi javob vaqti
         self._soat = collections.deque()
@@ -58,9 +61,20 @@ class Javobchi:
             pass
 
     # --- Telegram loop'idan chaqiriladi (tez qaytishi kerak) ---
+    def _sabab(self, chat_id, kim, matn):
+        """Javob berilmadi — sababini Jarvis chatida va sozlamalarda ko'rsatadi."""
+        self.oxirgi_holat = f"{time.strftime('%H:%M')} — {kim}: {matn}"
+        if self._aytilgan.get(chat_id) != matn:
+            self._aytilgan[chat_id] = matn
+            self.xabar(f"💼 {kim}ga javob berilmadi: {matn}")
+
     def keldi(self, x):
+        self.oxirgi_holat = f"{time.strftime('%H:%M')} — {x.get('kim')}dan xabar keldi"
+        print(f"(Biznes Telegram: {x.get('kim')}dan xabar keldi, avto-javob {'yoniq' if self.yoniq else 'OCHIQ EMAS'})")
         if not self.yoniq:
+            self._sabab(x["chat_id"], x.get("kim", "?"), "avtomatik javob o'chiq — sozlamalarda yoqing")
             return
+        self._kimlar[x["chat_id"]] = x.get("kim", "?")
         self._oxirgi[x["chat_id"]] = time.time()
         self._navbat.put(x["chat_id"])
 
@@ -74,10 +88,14 @@ class Javobchi:
                 self.javob_ber(chat_id)
             except Exception as xato:
                 print(f"(Biznes Telegram javob xatosi: {type(xato).__name__}: {xato})")
+                self._sabab(chat_id, self._kimlar.get(chat_id, "Mijoz"), f"xato — {type(xato).__name__}: {str(xato)[:120]}")
 
     def javob_ber(self, chat_id):
-        if not self.yoniq or self.akk.holat != "ulangan":
+        kim = self._kimlar.get(chat_id, "Mijoz")
+        if not self.yoniq:
             return
+        if self.akk.holat != "ulangan":
+            return self._sabab(chat_id, kim, f"akkaunt holati: {self.akk.holat}")
         tarix = self.akk.oxirgi_xabarlar(chat_id, 14)
         if not tarix or tarix[-1][0]:
             return                        # oxirgi xabar bizniki — javob berilgan
@@ -85,14 +103,15 @@ class Javobchi:
         bizniki = self._bizniki.get(chat_id, set())
         for chiquvchi, _, vaqt, xid in tarix:
             if chiquvchi and xid not in bizniki and hozir - vaqt < self.operator_pauza:
-                return                    # operator o'zi gaplashyapti
+                qoldi = int((self.operator_pauza - (hozir - vaqt)) // 60) + 1
+                return self._sabab(chat_id, kim, "bu chatga Gatework akkauntidan o'zingiz yozgansiz — Jarvis "
+                                   f"{qoldi} daqiqa aralashmaydi (sinash uchun boshqa akkauntdan yozing)")
         if hozir - self._chatga_javob.get(chat_id, 0) < self.chat_oraligi:
             return
         while self._soat and hozir - self._soat[0] > 3600:
             self._soat.popleft()
         if len(self._soat) >= self.soat_chegara:
-            print("(Biznes Telegram: soatlik chegara — javob keyinga qoldi)")
-            return
+            return self._sabab(chat_id, kim, "soatlik chegara (60 ta) — keyinroq")
         suhbat = []
         for chiquvchi, matn, _, _ in tarix:
             rol = "assistant" if chiquvchi else "user"
@@ -108,7 +127,8 @@ class Javobchi:
             return
         javob = self.ai(suhbat, self.malumot())
         if not javob:
-            return
+            import sun_iy
+            return self._sabab(chat_id, kim, "Claude javob bermadi — " + (sun_iy.biznes_xato or "AI kaliti ulanganmi?"))
         if self.bezakli and self.akk.bezak_bormi():
             yuborilganlar = self.akk.yubor_bezakli(chat_id, javob)
         else:
@@ -120,4 +140,6 @@ class Javobchi:
         self._soat.append(time.time())
         self.javoblar_soni += 1
         self.akk.oqildi(chat_id, tarix[-1][3])
-        self.xabar(f"💼 {self.akk.men or 'Biznes akkaunt'}: mijozga avtomatik javob berildi — «{suhbat[-1][1][:60]}»")
+        self._aytilgan.pop(chat_id, None)
+        self.oxirgi_holat = f"{time.strftime('%H:%M')} — {kim}ga javob berildi ✅"
+        self.xabar(f"💼 {kim}ga avtomatik javob berildi — «{suhbat[-1][1][:60]}»")

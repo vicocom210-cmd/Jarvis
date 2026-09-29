@@ -186,11 +186,13 @@ class Akkaunt:
     async def _ulandi_async(self):
         me = await self.mijoz.get_me()
         self.premium = bool(getattr(me, "premium", False))
-        if self.bezak and self.premium:
-            try:
-                await self._bezak_yukla()
-            except Exception as xato:
-                print(f"(Premium emoji yuklanmadi: {xato})")
+        if self.bezak and self.premium:           # fonda — ulanishni kuttirmaydi
+            async def _bezak():
+                try:
+                    await self._bezak_yukla()
+                except Exception as xato:
+                    print(f"(Premium emoji yuklanmadi: {xato})")
+            asyncio.ensure_future(_bezak())
         self.men = " ".join(x for x in (me.first_name, me.last_name) if x) + (f" (@{me.username})" if me.username else "")
         self.holat = "ulangan"
         self.holat_xabari(f"✈️ {self.nom} ulandi: {self.men}")

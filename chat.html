@@ -477,6 +477,12 @@ function telegramAkkauntBolimi(ich, T, p){
     b.appendChild(e('div','izoh',"🔒 Kirish kaliti faqat shu kompyuterda saqlanadi. Kodni hech kimga aytmang — Jarvis ham uni faqat Telegram'ga yuboradi."));
   } else if(p==='tgb'){
     b.appendChild(matnli('div','izoh','Ulangan akkaunt: '+(T.men||'')+'  ·  avtomatik javoblar: '+(T.javoblar||0)));
+    if(T.oxirgi) b.appendChild(matnli('div','izoh','Oxirgi hodisa: '+T.oxirgi));
+    const sq0=e('div','qator'); const si=e('input','maydon'); si.placeholder='Sinov savoli: Salom, ish bormi?';
+    const sb=matnli('button','tugma ikkinchi','🧪 Claude javobini sinash'); const snat=e('div','izoh'); snat.style.whiteSpace='pre-wrap';
+    sb.onclick=async()=>{ sb.disabled=true; snat.textContent='⏳ Claude yozyapti...'; snat.style.color='';
+      const d=await sozSorov('tgb_sinash',si.value); sb.disabled=false; snat.textContent=(d.ok?'✅ ':'⚠️ ')+(d.xabar||''); snat.style.color=d.ok?'#8dffc9':'#ffb3b3'; };
+    sq0.appendChild(si); sq0.appendChild(sb); b.appendChild(sq0); b.appendChild(snat);
     const r=e('div','sozq'); const t=e('div'); t.appendChild(matnli('b','','Avtomatik javob (Claude)'));
     t.appendChild(matnli('small','',"Yoqilsa — shaxsiy xabar yozgan har kimga Claude javob beradi (soatiga 60 tagacha)"));
     r.appendChild(t); r.appendChild(almashtirgich(T.yoniq,'tgb_yoniq')); b.appendChild(r);
