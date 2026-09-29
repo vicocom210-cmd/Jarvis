@@ -182,6 +182,13 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception as xato:
                     ok, xabar = False, f"Xato: {xato}"
                 self._javob(200, {"ok": ok, "xabar": xabar, **qoshimcha})
+            elif self.path.startswith("/api/tarjima"):             # sozlamalar oynasi yozuvlari tanlangan tilda
+                import tarjima
+                try:
+                    self._javob(200, {"ok": True, "tarjimalar": tarjima.ui_tarjima(
+                        list(malumot.get("matnlar") or []), str(malumot.get("til") or "uz"))})
+                except Exception as xato:
+                    self._javob(200, {"ok": False, "tarjimalar": {}, "xato": str(xato)})
             elif self.path.startswith("/api/ochir"):
                 self._javob(200, {"ok": arxiv.ochir(malumot.get("sana", ""))})
             else:

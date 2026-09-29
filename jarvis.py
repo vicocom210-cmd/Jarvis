@@ -2037,7 +2037,7 @@ def jonli_kamera(b):
     if chat_jarayon is None or chat_jarayon.poll() is not None:
         chat_och()
     arxiv.yoz("jarvis", f"📺 {k['nom']} — jonli", "kamera", jonli=k["nom"])
-    gapir(f"{k['nom']} kamerasini jonli ochdim.", tarjima_qil=False)
+    gapir(f"{k['nom']} kamerasini jonli ochdim.")
 
 
 def _telegramda_jonli(k, soniya):

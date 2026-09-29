@@ -816,9 +816,42 @@ async function sozlamalarniYukla(){
   b.appendChild(e('div','izoh','Jarvis — o\'zbekcha shaxsiy yordamchi. Ovozli buyruqlar uchun "Jarvis" deng.'));
   const hq=e('div','qator'); hq.appendChild(matnli('span','','Ma\'lumotlar papkasi:')); hq.appendChild(matnli('span','kod',S.papka));
   b.appendChild(hq); ich.appendChild(b);
+  JORIY_TIL=Q.til; interfeysniTarjima();
 }
 
-ol('/api/sozlamalar').then(mavzuQoy).catch(()=>{});
+// ---------- Interfeysni tanlangan tilga o'girish (sozlamalar, menyu, tugmalar) ----------
+let JORIY_TIL='uz'; const TR_XOTIRA={};
+function _trTugunlar(){
+  const ildizlar=[document.querySelector('aside'),document.querySelector('.bosh'),document.getElementById('sozIchki'),
+    document.querySelector('.kiritish'),document.getElementById('internetYoq'),document.getElementById('banner')].filter(Boolean);
+  const r=[];
+  for(const ild of ildizlar){
+    const w=document.createTreeWalker(ild,NodeFilter.SHOW_TEXT); let n;
+    while((n=w.nextNode())){ const tn=n, p=n.parentElement; if(!p||p.closest('.kod,code,script,style,.kunlar')) continue;
+      if(n._asl===undefined) n._asl=n.nodeValue;
+      const t=n._asl.replace(/\s+/g,' ').trim(); if(t.length<2||!/[A-Za-z\u0400-\u04FF]{2}/.test(t)) continue;
+      r.push({t,qoy:(v)=>{ tn.nodeValue=(/^\s/.test(tn._asl)?' ':'')+v+(/\s$/.test(tn._asl)?' ':''); }}); }
+    ild.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(el=>{
+      if(el._aslP===undefined) el._aslP=el.placeholder; const t=el._aslP.replace(/\s+/g,' ').trim();
+      if(t.length>1&&/[A-Za-z]{2}/.test(t)&&!/^(sk-ant|IGAA|123456789|\+998|admin|192\.)/.test(t)) r.push({t,qoy:(v)=>{ el.placeholder=v; }}); });
+  }
+  return r;
+}
+async function interfeysniTarjima(){
+  const tugunlar=_trTugunlar(), til=JORIY_TIL||'uz';
+  if(til==='uz'){ for(const x of tugunlar) x.qoy(x.t); return; }
+  const xot=TR_XOTIRA[til]||(TR_XOTIRA[til]={});
+  const yoq=[...new Set(tugunlar.map(x=>x.t).filter(t=>!(t in xot)))];
+  for(const x of tugunlar) if(xot[x.t]) x.qoy(xot[x.t]);            // bor tarjimalar — darhol
+  if(!yoq.length) return;
+  try{ const r=await fetch('/api/tarjima',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({til,matnlar:yoq})});
+    const d=await r.json(); Object.assign(xot,d.tarjimalar||{}); for(const t of yoq) if(!(t in xot)) xot[t]='';
+  }catch(_){ return; }
+  if(til!==JORIY_TIL) return;
+  for(const x of _trTugunlar()) if(xot[x.t]) x.qoy(xot[x.t]);
+}
+
+ol('/api/sozlamalar').then(s=>{ mavzuQoy(s); JORIY_TIL=(s.qiymatlar||{}).til||'uz'; interfeysniTarjima(); }).catch(()=>{});
 olcham(); kunOch(BUGUN).then(()=>{ jonli(); if(/[?&]soz/.test(location.search)) sozlamalarOch();
   const jn=new URLSearchParams(location.search).get('jonli'); if(jn) jonliKorsat(jn); }); matn.focus();
 </script>
