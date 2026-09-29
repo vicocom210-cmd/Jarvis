@@ -96,11 +96,19 @@ class Javobchi:
             return
         if self.akk.holat != "ulangan":
             return self._sabab(chat_id, kim, f"akkaunt holati: {self.akk.holat}")
-        tarix = self.akk.oxirgi_xabarlar(chat_id, 14)
+        bizniki = self._bizniki.get(chat_id, set())
+        # Telegram Business avto-javobi (salomlashish/"hozir yo'qman") — mijozdan keyin 5 soniya ichida
+        # o'zi ketadi; uni odam (operator) yozgan deb hisoblamaymiz va suhbatdan chiqaramiz
+        tarix, oldingi_kiruvchi = [], 0
+        for x in self.akk.oxirgi_xabarlar(chat_id, 14):
+            if not x[0]:
+                oldingi_kiruvchi = x[2]
+            elif x[3] not in bizniki and x[2] - oldingi_kiruvchi < 5:
+                continue
+            tarix.append(x)
         if not tarix or tarix[-1][0]:
             return                        # oxirgi xabar bizniki — javob berilgan
         hozir = time.time()
-        bizniki = self._bizniki.get(chat_id, set())
         for chiquvchi, _, vaqt, xid in tarix:
             if chiquvchi and xid not in bizniki and hozir - vaqt < self.operator_pauza:
                 qoldi = int((self.operator_pauza - (hozir - vaqt)) // 60) + 1
