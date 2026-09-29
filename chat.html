@@ -518,6 +518,12 @@ function kameraBolimi(ich, K){
     "kamerani o'zi topadi. Login odatda <b>admin</b>, parol — kamera paroli (Hik-Connect'dagi <b>tasdiqlash kodi</b> — "+
     "qurilma yorlig'idagi 6 ta katta harf — bo'lishi ham mumkin). Hik-Connect'dagi 213.x / 144.x kabi manzillar — "+
     "routeringizning internet manzili, bu yerga kerak emas.");
+  if(K.royxat.length){                                  // eng muhim tugma — tepada
+    const r=e('div','sozq'); r.style.cssText='border:1px solid rgba(255,217,154,.35);border-radius:12px;padding:12px;margin:10px 0';
+    const t=e('div'); t.appendChild(matnli('b','',(K.xabar?'🔔':'🔕')+' Kamera xabarlari — '+(K.xabar?'YONIQ':"O'CHIQ")));
+    t.appendChild(matnli('small','',K.xabar?"Kamerada odam ko'rinsa aytadi (chat, Telegram, ovoz). O'chirsangiz — hech narsa aytmaydi"
+      :"Kameradan hech qanday xabar kelmaydi. Yoqsangiz — odam ko'rinsa yana aytadi"));
+    r.appendChild(t); r.appendChild(almashtirgich(K.xabar,'kamera_xabar')); b.appendChild(r); }
   // --- tarmoqdan qidirish ---
   const qq=e('div','qator'); const qb=matnli('button','tugma ikkinchi','🔍 Tarmoqdan qidirish'); const qn=e('div'); qn.style.width='100%';
   qq.appendChild(qb); b.appendChild(qq); b.appendChild(qn);

@@ -1793,6 +1793,8 @@ def uy_kamera_rasmi(b):
 def kamera_harakat(k, yol, soni=0):
     """Kamerada odam paydo bo'ldi: kompyuterda jonli video o'zi ochiladi (chat yopiq bo'lsa ham),
     chatga va Telegram'ga belgilangan rasm bilan xabar keladi."""
+    if not SOZ.get("kamera_xabar", True):               # kamera xabarlari o'chirilgan — jim
+        return
     kim = f"{soni} ta odam" if soni > 1 else "odam"
     if soni == 0:
         kim = "harakat"                                     # odam modeli yo'q — eski usul
@@ -1808,6 +1810,19 @@ def kamera_harakat(k, yol, soni=0):
         bot.rasm_yubor(yol, matn)
     if SOZ.get("kamera_ovoz"):
         gapir(f"Diqqat! {k['nom']} kamerasida {kim} bor.", uzilmas=True)
+
+
+def kamera_xabarlari(yoqilsin):
+    """Bitta tugma: o'chsa — kameralardan hech qanday xabar (ovoz, chat, Telegram) kelmaydi va kuzatuv to'xtaydi."""
+    if yoqilsin:
+        sozlama_ozgartir("kamera_xabar", True, ayt=False)
+        soni = kuzatuvni_yoq(True) if SOZ.get("kamera_kuzatuv_oldin", True) else 0
+        return (f"Kamera xabarlari yoqildi — {soni} ta kamerada odam kuzatilyapti." if soni
+                else "Kamera xabarlari yoqildi.")
+    sozlama_ozgartir("kamera_kuzatuv_oldin", bool(SOZ.get("kamera_kuzatuv")), ayt=False)
+    kuzatuvni_yoq(False)
+    sozlama_ozgartir("kamera_xabar", False, ayt=False)
+    return "Kamera xabarlari o'chirildi — kamerada odam ko'rinsa ham hech narsa aytmayman."
 
 
 def kuzatuvni_yoq(yoqilsin=True):
@@ -1968,6 +1983,8 @@ def _yuz_tanildi(k, ism, ball, rasm, ochsin):
         matn = (f"🚪 {ism} tanildi ({int(ball * 100)}%) — eshik ochildi" if ok
                 else f"⚠️ {ism} tanildi, lekin eshik ochilmadi: {xabar}")
     else:
+        if not SOZ.get("kamera_xabar", True):
+            return
         matn = f"👤 Eshik oldida {ism} ({int(ball * 100)}%)"
     matn += f" · {datetime.datetime.now():%H:%M:%S}"
     print(matn)
@@ -1977,6 +1994,8 @@ def _yuz_tanildi(k, ism, ball, rasm, ochsin):
 
 
 def _notanish_odam(k, rasm):
+    if not SOZ.get("kamera_xabar", True):
+        return
     import cv2
     yol = kamera._yangi_yol(k, "-notanish")
     cv2.imwrite(yol, rasm)
@@ -2167,6 +2186,7 @@ def chat_sozlamalari():
                                "eshik": k is eshik_kamerasi()}
                               for k in SOZ.get("kameralar", []) if k.get("ip")],
                    "kuzatuv": bool(SOZ.get("kamera_kuzatuv")), "ovoz": bool(SOZ.get("kamera_ovoz")),
+                   "xabar": bool(SOZ.get("kamera_xabar", True)),
                    "yuz_eshik": bool(SOZ.get("yuz_eshik")), "yuz_eshik_och": bool(SOZ.get("yuz_eshik_och", True)),
                    "yuz_ishlayapti": bool(qorovullar), "odamlar": _odamlar(),
                    "eshik": ({"nom": eshik_qurilmasi()["nom"], "ip": eshik_qurilmasi()["ip"],
@@ -2342,6 +2362,8 @@ def chat_sozlama_yoz(kalit, qiymat):
         if qorovullar:
             yuz_eshikni_yoq(True)
         return True, ("Tanish yuzda eshik ochiladi." if qiymat else "Faqat xabar beraman, eshikni ochmayman.")
+    if kalit == "kamera_xabar":
+        return True, kamera_xabarlari(bool(qiymat))
     if kalit == "kamera_kuzatuv":
         soni = kuzatuvni_yoq(bool(qiymat))
         return True, (f"{soni} ta kamerada harakat kuzatilyapti." if qiymat else "Kuzatuv to'xtatildi.")
@@ -3513,6 +3535,12 @@ def bajar(b):
     if "xayr" in sozlar and len(sozlar) <= 3:
         gapir(f"Xayr, {ISM}!")
         return False
+
+    # "kamera xabarlarini o'chir / yoq"
+    elif bor(b, "kamera", "камера") and bor(b, "xabar", "ogohlantir", "aytma", "gapirma", "bildirish") \
+            and re.search(r"(o'?chir|ochir|to'xtat|aytma|gapirma|yoq|yoqib)", b):
+        o_chir = bool(re.search(r"(o'?chir|ochir|to'xtat|aytma|gapirma)", b))
+        gapir(kamera_xabarlari(not o_chir))
 
     # "o'zingni tekshir" — internet, ovoz, mikrofon, AI kaliti (boshqa kompyuterda nima yetishmasligini aytadi)
     elif re.search(r"(o'?zingni|ozingni|jarvisni) tekshir|^tekshiruv$|diagnostika", b):
