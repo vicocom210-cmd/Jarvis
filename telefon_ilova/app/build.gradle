@@ -15,24 +15,37 @@ android {
         versionName "2.1"
     }
 
-    // Doimiy imzo kaliti: har bir yangi APK eskisining ustiga muammosiz o'rnatiladi
-    // (aks holda GitHub har safar yangi kalit yaratadi va yangilanish o'rnatilmaydi)
+    // Doimiy imzo kaliti: har bir yangi APK eskisining ustiga muammosiz o'rnatiladi.
+    // Kalit va parollar KODDA SAQLANMAYDI (GitHub'ga chiqmasin):
+    //   * kompyuterda — telefon_ilova/keystore.properties fayli (git'ga qo'shilmaydi);
+    //   * GitHub Actions'da — JARVIS_KEYSTORE_* maxfiy o'zgaruvchilari (Secrets).
+    def kalitSozlama = new Properties()
+    def kalitFayli = rootProject.file('keystore.properties')
+    if (kalitFayli.exists()) {
+        kalitFayli.withInputStream { kalitSozlama.load(it) }
+    }
+    def ol = { String nom, String muhit -> kalitSozlama.getProperty(nom) ?: System.getenv(muhit) }
+    def kalitYoli = ol('storeFile', 'JARVIS_KEYSTORE_FILE')
+    def imzoBor = kalitYoli && file(kalitYoli).exists()
+
     signingConfigs {
-        doimiy {
-            storeFile file('jarvis.keystore')
-            storePassword 'jarvis123'
-            keyAlias 'jarvis'
-            keyPassword 'jarvis123'
+        if (imzoBor) {
+            doimiy {
+                storeFile file(kalitYoli)
+                storePassword ol('storePassword', 'JARVIS_KEYSTORE_PASSWORD')
+                keyAlias ol('keyAlias', 'JARVIS_KEY_ALIAS') ?: 'jarvis'
+                keyPassword ol('keyPassword', 'JARVIS_KEY_PASSWORD')
+            }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig signingConfigs.doimiy
+            if (imzoBor) signingConfig signingConfigs.doimiy
         }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.doimiy
+            if (imzoBor) signingConfig signingConfigs.doimiy
         }
     }
     compileOptions {

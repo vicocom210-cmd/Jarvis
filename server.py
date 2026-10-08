@@ -2,19 +2,55 @@
 Kichik HTTP server: telefon ilovasi (APK) shu orqali kompyuterdagi Jarvis'ni boshqaradi.
 Telefon va kompyuter bitta Wi-Fi'da bo'lishi kerak.
 
-Xavfsizlik: har bir so'rovda PIN kod tekshiriladi (sozlamalarda saqlanadi).
+Xavfsizlik:
+  * har bir so'rovda PIN kod tekshiriladi (sozlamalarda saqlanadi);
+  * noto'g'ri PIN ko'p kiritilsa, o'sha qurilma (va kerak bo'lsa hamma) vaqtincha bloklanadi —
+    PIN'ni taxmin qilib topib bo'lmaydi;
+  * buyruq faqat telefon ilovasidan (file:// sahifa) qabul qilinadi — brauzerdagi begona
+    saytlar kompyuterga buyruq yubora olmaydi.
 Faqat mahalliy tarmoqdan (Wi-Fi) ishlaydi, internetga chiqmaydi.
 """
+import hmac
 import json
 import os
 import sys
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import arxiv
 
 PORT = 8770
+MAKS_TANA = 64 * 1024        # so'rov tanasi chegarasi (katta so'rov bilan xotirani to'ldirib bo'lmasin)
+# Telefon ilovasi sahifani file:// dan ochadi — brauzer bunday sahifa uchun Origin'ni "null" qiladi.
+# Oddiy saytlarning Origin'i http(s)://... bo'ladi — ularni rad etamiz.
+RUXSAT_ORIGIN = (None, "null", "file://")
+URINISH_CHEGARASI = 5        # bir qurilmadan shuncha noto'g'ri PIN — bloklanadi
+BLOK_VAQTI = 15 * 60         # soniya
+UMUMIY_CHEGARA = 20          # 10 daqiqada hamma qurilmalardan shuncha xato — server buyruqlarni to'xtatadi
+_xatolar = {}                # ip -> [xato vaqtlari]
+_umumiy_xatolar = []
+_xato_qulfi = threading.Lock()
+
+
+def _bloklanganmi(ip):
+    hozir = time.time()
+    with _xato_qulfi:
+        _umumiy_xatolar[:] = [t for t in _umumiy_xatolar if hozir - t < 600]
+        if len(_umumiy_xatolar) >= UMUMIY_CHEGARA:
+            return True
+        oxirgilar = [t for t in _xatolar.get(ip, []) if hozir - t < BLOK_VAQTI]
+        _xatolar[ip] = oxirgilar
+        return len(oxirgilar) >= URINISH_CHEGARASI
+
+
+def _xato_yoz(ip):
+    hozir = time.time()
+    with _xato_qulfi:
+        _xatolar.setdefault(ip, []).append(hozir)
+        _umumiy_xatolar.append(hozir)
+    print(f"⚠️ Telefon serveri: noto'g'ri PIN ({ip})")
 _bajaruvchi = None          # (matn) -> javob  — jarvis.py beradi
 _pin = "0000"
 _server = None
@@ -104,8 +140,12 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             uzunlik = int(self.headers.get("Content-Length", 0))
+            if not 0 <= uzunlik <= MAKS_TANA:
+                raise ValueError("juda katta")
             malumot = json.loads(self.rfile.read(uzunlik).decode("utf-8"))
-        except (ValueError, TypeError):
+            if not isinstance(malumot, dict):
+                raise ValueError("obyekt emas")
+        except (ValueError, TypeError, UnicodeDecodeError):
             self._javob(400, {"ok": False, "xato": "noto'g'ri so'rov"})
             return
         if self.path.startswith("/api/"):
@@ -131,7 +171,15 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._javob(404, {"ok": False})
             return
-        if str(malumot.get("pin", "")) != _pin:
+        if self.headers.get("Origin") not in RUXSAT_ORIGIN:
+            self._javob(403, {"ok": False, "xato": "Ruxsat yo'q"})
+            return
+        ip = self.client_address[0]
+        if _bloklanganmi(ip):
+            self._javob(429, {"ok": False, "xato": "Ko'p noto'g'ri urinish. 15 daqiqadan keyin qayta urinib ko'ring."})
+            return
+        if not hmac.compare_digest(str(malumot.get("pin", "")).encode(), _pin.encode()):
+            _xato_yoz(ip)
             self._javob(403, {"ok": False, "xato": "PIN noto'g'ri"})
             return
         matn = (malumot.get("matn") or "").strip()

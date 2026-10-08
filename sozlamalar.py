@@ -31,8 +31,8 @@ RANGLAR = {
 }
 
 STANDART = {"ovoz": "ayol", "til": "uz", "rang": "kok", "ism": "Abdulloh",
-            "telegram_token": "", "telegram_egasi": 0, "telefon_adres": "", "telefon_pin": "0000",
-            "telefon_kanal": "", "shahar": "toshkent", "chat_avto": True,
+            "telegram_token": "", "telegram_egasi": 0, "telefon_adres": "", "telefon_pin": "",
+            "telefon_kanal": "", "bulut_yoqilgan": False, "shahar": "toshkent", "chat_avto": True,
             "groq_kalit": ""}
 
 

@@ -5,3 +5,8 @@ build/
 dist/
 *.spec
 jarvis.ico
+
+# Maxfiy imzo kalitlari va parollar
+*.keystore
+*.jks
+keystore.properties

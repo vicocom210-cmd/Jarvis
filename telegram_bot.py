@@ -188,7 +188,7 @@ class Bot:
                 self.egasi = kimdan
                 self.egasi_ozgardi(kimdan)
                 self.holat_ozgardi("ulangan", "")
-                self.yoz("✅ Ulandi! Endi men sizning Jarvis'ingizman.\n"
+                self.yoz("✅ Ulandi! Endi men sizning Alisa'ingizman.\n"
                          "Buyruq yozing, masalan: soat necha, yuklamalardagi rasmlarni tashla, "
                          "ekran rasmini yubor. Rasm yoki fayl yuborsangiz, kompyuterga saqlayman.", chat)
             else:
@@ -229,7 +229,7 @@ class Bot:
                 return
 
         if matn in ("/start", "/help", "/yordam"):
-            self.yoz("Men kompyuteringizdagi Jarvis'man. Oddiy so'z bilan yozing, masalan:\n"
+            self.yoz("Men kompyuteringizdagi Alisaman. Oddiy so'z bilan yozing, masalan:\n"
                      "• soat necha\n• youtubedan musiqa qo'y\n• yuklamalardagi rasmlarni tashla\n"
                      "• ish stolidagi hujjatlarni yubor\n• hisobot faylini yubor\n"
                      "• ekran rasmini yubor\n• yordam\n"

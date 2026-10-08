@@ -1160,11 +1160,11 @@ def chat_sozlama_yoz(kalit, qiymat):
             if ok else "Sozlab bo'lmadi."
     if kalit == "telefon_pin":
         qiymat = str(qiymat or "").strip()
-        if not re.fullmatch(r"\d{4,8}", qiymat):
-            return False, "PIN 4-8 ta raqamdan iborat bo'lsin."
+        if not re.fullmatch(r"\d{6,10}", qiymat) or len(set(qiymat)) == 1:
+            return False, "PIN 6-10 ta raqamdan iborat bo'lsin (masalan 000000 kabi oson bo'lmasin)."
         sozlama_ozgartir("telefon_pin", qiymat, ayt=False)
         server._pin = qiymat                            # telefon ilovasi (Wi-Fi) darhol yangi PIN bilan
-        if SOZ.get("telefon_kanal"):
+        if SOZ.get("bulut_yoqilgan") and SOZ.get("telefon_kanal"):
             fonda(bulut.ishga_tushir, SOZ["telefon_kanal"], qiymat, web_bajar)
         return True, "PIN o'zgardi. Telefon ilovasida ham yangi PIN'ni kiriting."
     if kalit == "telegram_token":
@@ -1347,7 +1347,7 @@ KIRILL_LOTIN = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e"
                 "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f",
                 "х": "x", "ц": "s", "ч": "ch", "ш": "sh", "ы": "i", "э": "e", "ю": "yu",
                 "я": "ya", "ё": "yo", "ғ": "g'", "қ": "q", "ҳ": "h", "ў": "o'"}
-CHAQIRUV_SOZLAR = ("jarvis", "djarvis")
+CHAQIRUV_SOZLAR = ("alisa", "alice", "jarvis", "djarvis")   # Alisa (eski odat bo'yicha Jarvis ham ishlaydi)
 
 
 def chaqiruv_sozimi(soz):
@@ -1838,7 +1838,7 @@ def javob_ber(gap):
         gapir(ai_javob(gap))
 
 
-YORDAM_MATNI = ("Meni chaqirish uchun avval Jarvis deng, yoki oynaning pastiga yozing. "
+YORDAM_MATNI = ("Meni chaqirish uchun avval Alisa deng, yoki oynaning pastiga yozing. "
                 "Men quyidagilarni qila olaman: YouTube, Telegram, brauzer, bloknot, "
                 "kalkulyator va papkalarni ochaman. Telegramda guruhni ham ocha olaman. "
                 "Soat va sanani aytaman. "
@@ -2014,7 +2014,7 @@ def bajar(b):
         gapir(f"Va alaykum assalom, {ISM}! Buyruq bering.")
 
     elif bor(b, "kimsan", "isming", "sen kim"):
-        gapir(f"Men Jarvisman, {ISM}ning shaxsiy yordamchisiman.")
+        gapir(f"Men Alisaman, {ISM}ning shaxsiy yordamchisiman.")
 
     elif bor(b, "qalaysan", "yaxshimisan", "ishlar qalay"):
         gapir("Rahmat, yaxshi! Sizga nima yordam kerak?")
@@ -2208,7 +2208,13 @@ def miya():
     ui_navbat.put(("sozlamalar", dict(SOZ)))
     telegram_ishga_tushir()
     eslatmalar = qulayliklar.Eslatmalar(eslatma_vaqti)     # eski eslatmalar ham tiklanadi
-    pin = str(SOZ.get("telefon_pin") or "0000")
+    pin = str(SOZ.get("telefon_pin") or "")
+    if len(pin) < 6 or pin == "000000":
+        # Standart "0000" PIN'ni taxmin qilish oson — tasodifiy 6 xonali PIN yaratamiz
+        import secrets
+        pin = f"{secrets.randbelow(10**6):06d}"
+        sozlama_ozgartir("telefon_pin", pin, ayt=False)
+        ui_navbat.put(("jarvis", f"Telefon ilovasi uchun yangi PIN: {pin} (chatdagi sozlamalarda ham ko'rinadi)"))
     server.chat_sozla(chatdan_keldi, lambda: joriy_holat, chat_sozlamalari, chat_sozlama_yoz)
     threading.Thread(target=internetni_kuzat, daemon=True).start()
     if server.ishga_tushir(web_bajar, pin):
@@ -2216,18 +2222,21 @@ def miya():
         print(f"💬 Chat va arxiv: http://127.0.0.1:{server.PORT}/chat")
         if SOZ.get("chat_avto", True):
             chat_och()                              # chat oynasi o'zi ochiladi
-    # Bulut ko'prigi — istalgan joydan ishlash uchun (bir Wi-Fi shart emas)
-    kanal = SOZ.get("telefon_kanal")
-    if not kanal:
-        import uuid
-        kanal = "jv-" + uuid.uuid4().hex[:12]
-        sozlama_ozgartir("telefon_kanal", kanal, ayt=False)
-    bulut_holat = bulut.ishga_tushir(kanal, pin, web_bajar)
-    if bulut_holat == "ok":
-        print(f"☁️ Internet orqali boshqarish — Kanal: {kanal}  (PIN: {pin})")
-    elif bulut_holat == "yoq_kutubxona":
-        print("☁️ Internet orqali boshqarish uchun: pip install paho-mqtt")
-    gapir(f"Salom, {ISM}! Men Jarvisman. Kerak bo'lsam, Jarvis deb chaqiring yoki pastga yozing.")
+    # Bulut ko'prigi (umumiy MQTT server) XAVFLI: u yerdagi xabarlarni (PIN ham) istalgan odam
+    # o'qiy oladi. Shuning uchun standart holatda o'chiq. Uzoqdan boshqarish uchun Telegram bot
+    # yoki Tailscale (telefon va kompyuter xuddi bitta Wi-Fi'dagidek) ishlating.
+    if SOZ.get("bulut_yoqilgan"):
+        kanal = SOZ.get("telefon_kanal")
+        if not kanal:
+            import uuid
+            kanal = "jv-" + uuid.uuid4().hex[:12]
+            sozlama_ozgartir("telefon_kanal", kanal, ayt=False)
+        bulut_holat = bulut.ishga_tushir(kanal, pin, web_bajar)
+        if bulut_holat == "ok":
+            print(f"☁️ Bulut ko'prigi yoqilgan (xavfsiz emas!) — Kanal: {kanal}")
+        elif bulut_holat == "yoq_kutubxona":
+            print("☁️ Bulut ko'prigi uchun: pip install paho-mqtt")
+    gapir(f"Salom, {ISM}! Men Alisaman. Kerak bo'lsam, Alisa deb chaqiring yoki pastga yozing.")
     suhbat_tugashi = 0          # shu vaqtgacha "Jarvis" demasdan gapirsa bo'ladi
 
     while True:
@@ -2236,7 +2245,7 @@ def miya():
         yangi_holat = "tinglash" if suhbatda else "kutish"
         if joriy_holat != yangi_holat:
             if yangi_holat == "kutish":
-                print("💤 Kutish rejimi (Jarvis deng).")
+                print("💤 Kutish rejimi (Alisa deng).")
             holat(yangi_holat)
 
         kelgan = keyingi_gap(qoldi if suhbatda else 1.0)
@@ -2280,9 +2289,9 @@ def miya():
         # boshqa ovozlarga / TV / suhbatga javob bermaydi). Oyna ekrandan yo'qoladi.
         suhbat_tugashi = 0
         if media_boshlandi:
-            print("💤 Musiqa qo'yildi, faqat Jarvis desangiz eshitaman.")
+            print("💤 Musiqa qo'yildi, faqat Alisa desangiz eshitaman.")
         else:
-            print("💤 Kutish rejimi (faqat Jarvis desangiz).")
+            print("💤 Kutish rejimi (faqat Alisa desangiz).")
     ui_navbat.put(("yopil",))
 
 

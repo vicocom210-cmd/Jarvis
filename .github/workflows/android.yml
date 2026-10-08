@@ -35,8 +35,25 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # Imzo kaliti GitHub Secrets'dan olinadi (kodda saqlanmaydi). Secrets yo'q bo'lsa,
+      # APK vaqtinchalik kalit bilan imzolanadi (eski ilova ustiga yangilanib o'rnatilmaydi).
+      - name: Imzo kalitini tayyorlash
+        env:
+          KALIT_BASE64: ${{ secrets.JARVIS_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KALIT_BASE64" ]; then
+            echo "$KALIT_BASE64" | base64 -d > "$RUNNER_TEMP/jarvis.keystore"
+            echo "JARVIS_KEYSTORE_FILE=$RUNNER_TEMP/jarvis.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::JARVIS_KEYSTORE_BASE64 secret yo'q — APK vaqtinchalik kalit bilan imzolanadi."
+          fi
+
       - name: APK yasash
         working-directory: telefon_ilova
+        env:
+          JARVIS_KEYSTORE_PASSWORD: ${{ secrets.JARVIS_KEYSTORE_PASSWORD }}
+          JARVIS_KEY_PASSWORD: ${{ secrets.JARVIS_KEYSTORE_PASSWORD }}
+          JARVIS_KEY_ALIAS: jarvis
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: APK'ni yuklab qo'yish

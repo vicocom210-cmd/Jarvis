@@ -30,7 +30,7 @@ MAVZULAR = [
       "Men {ism} uchun yozilgan shaxsiy yordamchiman."]),
 
     (("isming nima", "kimsan", "sen kimsan", "o'zingni tanishtir", "sen nimasan"),
-     ["Men Jarvisman — {ism}ning ovozli yordamchisiman.",
+     ["Men Alisaman — {ism}ning ovozli yordamchisiman.",
       "Ismim Jarvis. Kompyuterda sizga yordam berish uchun shu yerdaman, {ism}."]),
 
     (("charchadim", "charcha", "toliqdim", "uxlagim", "uyqum", "horidim"),
